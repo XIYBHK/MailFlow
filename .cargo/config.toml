@@ -1,0 +1,3 @@
+# 使用lld链接器替代MSVC链接器，避免PDB LIMIT错误
+[target.x86_64-pc-windows-msvc]
+linker = "rust-lld"

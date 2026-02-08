@@ -1,0 +1,40 @@
+[package]
+name = "email-client-app"
+version = "0.1.0"
+description = "A Tauri App"
+authors = ["you"]
+edition = "2021"
+
+[lib]
+name = "email_client_app_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = ["rustls-tls"] }
+tauri-plugin-opener = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# 使用与ai-l10n-studio相同的tokio配置
+tokio = { version = "1.0", features = ["full"] }
+
+# 邮件协议
+imap = "2.4"
+lettre = "0.11"
+native-tls = "0.2"
+
+# HTTP客户端（用于AI API调用）
+reqwest = { version = "0.12", features = ["json", "rustls-tls"], default-features = false }
+
+# 本地存储
+sled = "0.34"
+dirs = "5.0"
+
+# 日期时间
+chrono = { version = "0.4", features = ["serde"] }
+
+# UUID
+uuid = { version = "1", features = ["v4", "serde"] }
