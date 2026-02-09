@@ -1,12 +1,30 @@
-import { useEffect, useState } from 'react';
-import { useEmailStore } from './stores/emailStore';
-import { Sidebar } from './components/Sidebar';
-import { EmailList } from './components/EmailList';
-import { EmailDetail } from './components/EmailDetail';
-import { ComposeModal } from './components/ComposeModal';
-import { SettingsModal } from './components/SettingsModal';
-import { Mail, AlertCircle } from 'lucide-react';
-import './styles/index.css';
+import { useEffect, useState, useCallback } from 'react'
+import { useEmailStore } from './stores/emailStore'
+import { Sidebar } from './components/Sidebar'
+import { EmailList } from './components/EmailList'
+import { EmailDetail } from './components/EmailDetail'
+import { ComposeModal } from './components/ComposeModal'
+import { SettingsModal } from './components/SettingsModal'
+import { TauriDiagnostic } from './test-tauri-ipc'
+import { Mail, AlertCircle } from 'lucide-react'
+import './styles/index.css'
+
+// 诊断日志
+const logDiagnostic = (message: string, data?: unknown) => {
+  console.log(`[App Diagnostic] ${message}`, data ?? '')
+}
+
+// 检查 Tauri 环境
+const checkTauriEnv = () => {
+  if (typeof window === 'undefined') return false
+  const hasTauri = typeof (window as any).__TAURI__ !== 'undefined'
+  logDiagnostic('App 启动 - Tauri 环境检查', {
+    hasTauri,
+    hasCore: hasTauri ? typeof (window as any).__TAURI__.core : 'N/A',
+    windowLocation: window.location.href,
+  })
+  return hasTauri
+}
 
 function App() {
   const {
@@ -18,37 +36,63 @@ function App() {
     clearCurrentEmail,
     error,
     setError,
-  } = useEmailStore();
+  } = useEmailStore()
 
-  const [selectedUid, setSelectedUid] = useState<number | undefined>();
-  const [isComposeOpen, setIsComposeOpen] = useState(false);
-  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [selectedUid, setSelectedUid] = useState<number | undefined>()
+  const [isComposeOpen, setIsComposeOpen] = useState(false)
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false)
 
   useEffect(() => {
-    loadConfig();
-    loadAccounts();
-  }, []);
+    logDiagnostic('App 初始化开始')
+    checkTauriEnv()
 
-  const handleFolderChange = (folder: string) => {
-    setFolder(folder);
-    setSelectedUid(undefined);
-    clearCurrentEmail();
-  };
+    // 延迟加载，确保 Tauri 环境已准备好
+    const timer = setTimeout(async () => {
+      try {
+        logDiagnostic('开始加载配置')
+        await loadConfig()
+        logDiagnostic('配置加载完成')
+      } catch (err) {
+        logDiagnostic('配置加载失败', err)
+      }
 
-  const handleEmailSelect = (uid: number) => {
-    setSelectedUid(uid);
-  };
+      try {
+        logDiagnostic('开始加载账户')
+        await loadAccounts()
+        logDiagnostic('账户加载完成', { accountsCount: accounts.length })
+      } catch (err) {
+        logDiagnostic('账户加载失败', err)
+      }
+    }, 100)
 
-  const handleBackToList = () => {
-    setSelectedUid(undefined);
-    clearCurrentEmail();
-  };
+    return () => clearTimeout(timer)
+  }, [loadConfig, loadAccounts])
+
+  const handleFolderChange = useCallback(
+    (folder: string) => {
+      setFolder(folder)
+      setSelectedUid(undefined)
+      clearCurrentEmail()
+    },
+    [setFolder, clearCurrentEmail]
+  )
+
+  const handleEmailSelect = useCallback((uid: number) => {
+    setSelectedUid(uid)
+  }, [])
+
+  const handleBackToList = useCallback(() => {
+    setSelectedUid(undefined)
+    clearCurrentEmail()
+  }, [clearCurrentEmail])
 
   // 判断是否显示欢迎页面
-  const showWelcome = accounts.length === 0;
+  const showWelcome = accounts.length === 0
 
   return (
     <>
+      {/* Tauri 诊断面板 */}
+      <TauriDiagnostic />
       {/* 欢迎页面 */}
       {showWelcome ? (
         <div className="h-screen flex items-center justify-center bg-gradient-to-br from-primary-50 to-blue-50 dark:from-gray-900 dark:to-gray-800">
@@ -63,7 +107,9 @@ function App() {
               智能邮件管理，AI驱动的高效办公工具
             </p>
             <button
-              onClick={() => setIsSettingsOpen(true)}
+              onClick={() => {
+                setIsSettingsOpen(true)
+              }}
               className="px-8 py-3 bg-primary-500 hover:bg-primary-600 text-white rounded-lg font-medium transition-colors shadow-lg"
             >
               添加邮箱账户
@@ -79,7 +125,9 @@ function App() {
               <AlertCircle className="w-5 h-5 text-red-600 dark:text-red-400 flex-shrink-0" />
               <p className="flex-1 text-sm text-red-800 dark:text-red-300">{error}</p>
               <button
-                onClick={() => setError(null)}
+                onClick={() => {
+                  setError(null)
+                }}
                 className="text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/30 px-2 py-1 rounded"
               >
                 关闭
@@ -91,8 +139,12 @@ function App() {
           <div className="flex-1 flex overflow-hidden">
             <Sidebar
               onFolderChange={handleFolderChange}
-              onCompose={() => setIsComposeOpen(true)}
-              onSettings={() => setIsSettingsOpen(true)}
+              onCompose={() => {
+                setIsComposeOpen(true)
+              }}
+              onSettings={() => {
+                setIsSettingsOpen(true)
+              }}
             />
 
             {/* 邮件列表 */}
@@ -102,10 +154,7 @@ function App() {
               </div>
               {selectedUid ? (
                 <div className="flex-1 overflow-hidden">
-                  <EmailList
-                    onEmailSelect={handleEmailSelect}
-                    selectedUid={selectedUid}
-                  />
+                  <EmailList onEmailSelect={handleEmailSelect} selectedUid={selectedUid} />
                 </div>
               ) : (
                 <div className="flex-1">
@@ -134,16 +183,20 @@ function App() {
       {/* 模态框 - 始终渲染 */}
       <ComposeModal
         isOpen={isComposeOpen}
-        onClose={() => setIsComposeOpen(false)}
+        onClose={() => {
+          setIsComposeOpen(false)
+        }}
       />
 
       {/* SettingsModal - 使用更高的 z-index */}
       <SettingsModal
         isOpen={isSettingsOpen}
-        onClose={() => setIsSettingsOpen(false)}
+        onClose={() => {
+          setIsSettingsOpen(false)
+        }}
       />
     </>
-  );
+  )
 }
 
-export default App;
+export default App

@@ -1,86 +1,86 @@
 // 邮件类型定义
 export interface Email {
-  id: string;
-  uid: number;
-  subject: string;
-  from: string;
-  to: string[];
-  date: string;
-  body: string;
-  html_body?: string;
-  folder: string;
-  flags: string[];
-  is_read: boolean;
-  is_starred: boolean;
-  category?: string;
-  has_attachment: boolean;
-  size: number;
+  id: string
+  uid: number
+  subject: string
+  from: string
+  to: string[]
+  date: string
+  body: string
+  html_body?: string
+  folder: string
+  flags: string[]
+  is_read: boolean
+  is_starred: boolean
+  category?: string
+  has_attachment: boolean
+  size: number
 }
 
 export interface EmailSummary {
-  id: string;
-  uid: number;
-  subject: string;
-  from: string;
-  date: string;
-  is_read: boolean;
-  is_starred: boolean;
-  has_attachment: boolean;
-  category?: string;
-  preview: string;
-  body: string;
+  id: string
+  uid: number
+  subject: string
+  from: string
+  date: string
+  is_read: boolean
+  is_starred: boolean
+  has_attachment: boolean
+  category?: string
+  preview: string
+  body: string
 }
 
 export interface EmailAccount {
-  id: string;
-  email: string;
-  password: string;
-  imap_server: string;
-  imap_port: number;
-  smtp_server: string;
-  smtp_port: number;
-  name: string;
-  is_default: boolean;
+  id: string
+  email: string
+  password: string // 临时添加，用于与后端同步
+  imap_server: string
+  imap_port: number
+  smtp_server: string
+  smtp_port: number
+  name: string
+  is_default: boolean
 }
 
 export interface AppConfig {
-  accounts: string[];
-  default_account_id?: string;
-  ai_config: AiConfig;
-  ui_config: UiConfig;
+  accounts: string[]
+  default_account_id?: string
+  ai_config: AiConfig
+  ui_config: UiConfig
 }
 
 export interface AiConfig {
-  zhipu_api_key?: string;
-  zhipu_api_base: string;
-  zhipu_model: string;
-  auto_classify: boolean;
-  auto_summarize: boolean;
-  summary_language: string;
+  zhipu_api_key?: string
+  zhipu_api_base: string
+  zhipu_model: string
+  auto_classify: boolean
+  auto_summarize: boolean
+  summary_language: string
 }
 
 export interface UiConfig {
-  theme: string;
-  language: string;
-  emails_per_page: number;
-  show_preview: boolean;
-  font_size: number;
+  theme: string
+  language: string
+  emails_per_page: number
+  show_preview: boolean
+  font_size: number
 }
 
-export type EmailCategory = 'spam' | 'ads' | 'subscription' | 'work' | 'personal' | 'other';
+export type EmailCategory = 'spam' | 'ads' | 'subscription' | 'work' | 'personal' | 'other'
 
 export interface FilterRule {
-  id: string;
-  name: string;
-  conditions: FilterCondition[];
-  actions: FilterAction[];
-  enabled: boolean;
+  id: string
+  name: string
+  conditions: FilterCondition[]
+  actions: FilterAction[]
+  enabled: boolean
 }
 
 export interface FilterCondition {
-  field: 'from' | 'to' | 'subject' | 'body' | 'date';
-  operator: 'contains' | 'notContains' | 'equals' | 'notEquals' | 'regex';
-  value: string;
+  field: 'from' | 'to' | 'subject' | 'body' | 'date'
+  operator: 'contains' | 'notContains' | 'equals' | 'notEquals' | 'regex'
+  value: string
 }
 
 export type FilterAction =
@@ -88,4 +88,4 @@ export type FilterAction =
   | { type: 'markAsRead' }
   | { type: 'markAsStarred' }
   | { type: 'delete' }
-  | { type: 'addTag'; tag: string };
+  | { type: 'addTag'; tag: string }
