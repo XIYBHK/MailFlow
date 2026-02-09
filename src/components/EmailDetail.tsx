@@ -1,27 +1,65 @@
-import React from 'react';
-import { useEmailStore } from '../stores/emailStore';
-import { format } from 'date-fns';
-import { zhCN } from 'date-fns/locale';
-import { ArrowLeft, Star, Trash2, Reply, Forward, Sparkles, Languages } from 'lucide-react';
-import ReactMarkdown from 'react-markdown';
+import React from 'react'
+import { useEmailStore } from '../stores/emailStore'
+import { ArrowLeft, Star, Trash2, Reply, Forward, Sparkles, Languages } from 'lucide-react'
+import ReactMarkdown from 'react-markdown'
+import { formatFullDate } from '../utils/email'
 
-export const EmailDetail: React.FC<{ onBack: () => void }> = ({ onBack }) => {
-  const { currentEmail, isLoadingEmail, selectedFolder, markAsRead, deleteEmail, summarizeEmail, translateText } = useEmailStore();
-  const [aiSummary, setAiSummary] = React.useState<string>('');
-  const [isSummarizing, setIsSummarizing] = React.useState(false);
+export const EmailDetail: React.FC<{ onBack: () => void }> = React.memo(({ onBack }) => {
+  const {
+    currentEmail,
+    isLoadingEmail,
+    selectedFolder,
+    markAsRead,
+    deleteEmail,
+    summarizeEmail,
+    translateText,
+  } = useEmailStore()
+  const [aiSummary, setAiSummary] = React.useState<string>('')
+  const [isSummarizing, setIsSummarizing] = React.useState(false)
 
   React.useEffect(() => {
     if (currentEmail && !currentEmail.is_read) {
-      markAsRead(selectedFolder, currentEmail.uid);
+      void markAsRead(selectedFolder, currentEmail.uid)
     }
-  }, [currentEmail]);
+  }, [currentEmail, markAsRead, selectedFolder])
+
+  const handleSummarize = React.useCallback(async () => {
+    if (!currentEmail) return
+    setIsSummarizing(true)
+    try {
+      const summary = await summarizeEmail(currentEmail.body)
+      setAiSummary(summary)
+    } catch (error) {
+      console.error('Summary failed:', error)
+    } finally {
+      setIsSummarizing(false)
+    }
+  }, [currentEmail, summarizeEmail])
+
+  const handleTranslate = React.useCallback(async () => {
+    if (!currentEmail) return
+    try {
+      const translated = await translateText(currentEmail.body, 'en')
+      setAiSummary(`英文翻译:\n\n${translated}`)
+    } catch (error) {
+      console.error('Translation failed:', error)
+    }
+  }, [currentEmail, translateText])
+
+  const handleDelete = React.useCallback(async () => {
+    if (!currentEmail) return
+    if (confirm('确定要删除这封邮件吗？')) {
+      await deleteEmail(selectedFolder, currentEmail.uid)
+      onBack()
+    }
+  }, [currentEmail, selectedFolder, deleteEmail, onBack])
 
   if (isLoadingEmail) {
     return (
       <div className="flex items-center justify-center h-full">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-500"></div>
       </div>
-    );
+    )
   }
 
   if (!currentEmail) {
@@ -30,38 +68,8 @@ export const EmailDetail: React.FC<{ onBack: () => void }> = ({ onBack }) => {
         <Sparkles className="w-16 h-16 mb-4" />
         <p className="text-lg">选择一封邮件查看详情</p>
       </div>
-    );
+    )
   }
-
-  const handleSummarize = async () => {
-    if (!currentEmail) return;
-    setIsSummarizing(true);
-    try {
-      const summary = await summarizeEmail(currentEmail.body);
-      setAiSummary(summary);
-    } catch (error) {
-      console.error('Summary failed:', error);
-    } finally {
-      setIsSummarizing(false);
-    }
-  };
-
-  const handleTranslate = async () => {
-    if (!currentEmail) return;
-    try {
-      const translated = await translateText(currentEmail.body, 'en');
-      setAiSummary(`英文翻译:\n\n${translated}`);
-    } catch (error) {
-      console.error('Translation failed:', error);
-    }
-  };
-
-  const handleDelete = async () => {
-    if (confirm('确定要删除这封邮件吗？')) {
-      await deleteEmail(selectedFolder, currentEmail.uid);
-      onBack();
-    }
-  };
 
   return (
     <div className="h-full flex flex-col">
@@ -77,7 +85,9 @@ export const EmailDetail: React.FC<{ onBack: () => void }> = ({ onBack }) => {
         <div className="flex items-center gap-2">
           {/* AI摘要按钮 */}
           <button
-            onClick={handleSummarize}
+            onClick={() => {
+              void handleSummarize()
+            }}
             disabled={isSummarizing}
             className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors text-primary-600"
             title="AI摘要"
@@ -87,7 +97,9 @@ export const EmailDetail: React.FC<{ onBack: () => void }> = ({ onBack }) => {
 
           {/* 翻译按钮 */}
           <button
-            onClick={handleTranslate}
+            onClick={() => {
+              void handleTranslate()
+            }}
             className="p-2 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors"
             title="翻译"
           >
@@ -122,7 +134,9 @@ export const EmailDetail: React.FC<{ onBack: () => void }> = ({ onBack }) => {
 
           {/* 删除按钮 */}
           <button
-            onClick={handleDelete}
+            onClick={() => {
+              void handleDelete()
+            }}
             className="p-2 hover:bg-red-100 dark:hover:bg-red-900/30 rounded-lg transition-colors text-red-600"
             title="删除"
           >
@@ -148,7 +162,7 @@ export const EmailDetail: React.FC<{ onBack: () => void }> = ({ onBack }) => {
             </div>
           </div>
           <div className="text-sm text-gray-500 dark:text-gray-400">
-            {format(new Date(currentEmail.date), 'yyyy年MM月dd日 HH:mm', { locale: zhCN })}
+            {formatFullDate(currentEmail.date)}
           </div>
         </div>
 
@@ -159,7 +173,9 @@ export const EmailDetail: React.FC<{ onBack: () => void }> = ({ onBack }) => {
               <Sparkles className="w-4 h-4" />
               <span>AI摘要</span>
             </div>
-            <p className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap">{aiSummary}</p>
+            <p className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap">
+              {aiSummary}
+            </p>
           </div>
         )}
 
@@ -183,12 +199,10 @@ export const EmailDetail: React.FC<{ onBack: () => void }> = ({ onBack }) => {
         {currentEmail.has_attachment && (
           <div className="mt-6 pt-6 border-t border-gray-200 dark:border-gray-700">
             <h3 className="font-semibold mb-2">附件</h3>
-            <div className="text-sm text-gray-500 dark:text-gray-400">
-              （附件列表待实现）
-            </div>
+            <div className="text-sm text-gray-500 dark:text-gray-400">（附件列表待实现）</div>
           </div>
         )}
       </div>
     </div>
-  );
-};
+  )
+})

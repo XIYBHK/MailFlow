@@ -1,50 +1,50 @@
-import React, { useState } from 'react';
-import { useEmailStore } from '../stores/emailStore';
-import { X, Send, Paperclip } from 'lucide-react';
+import React, { useState } from 'react'
+import { useEmailStore } from '../stores/emailStore'
+import { X, Send, Paperclip } from 'lucide-react'
 
 interface ComposeModalProps {
-  isOpen: boolean;
-  onClose: () => void;
+  isOpen: boolean
+  onClose: () => void
 }
 
 export const ComposeModal: React.FC<ComposeModalProps> = ({ isOpen, onClose }) => {
-  const { sendEmail, currentAccount } = useEmailStore();
-  const [to, setTo] = useState('');
-  const [subject, setSubject] = useState('');
-  const [body, setBody] = useState('');
-  const [isSending, setIsSending] = useState(false);
+  const { sendEmail, currentAccount } = useEmailStore()
+  const [to, setTo] = useState('')
+  const [subject, setSubject] = useState('')
+  const [body, setBody] = useState('')
+  const [isSending, setIsSending] = useState(false)
 
   const handleSend = async () => {
     if (!to.trim()) {
-      alert('请输入收件人');
-      return;
+      alert('请输入收件人')
+      return
     }
 
     if (!subject.trim()) {
-      alert('请输入主题');
-      return;
+      alert('请输入主题')
+      return
     }
 
-    setIsSending(true);
+    setIsSending(true)
     try {
-      const toList = to.split(',').map(email => email.trim());
-      await sendEmail(toList, subject, body, false);
-      handleClose();
+      const toList = to.split(',').map(email => email.trim())
+      await sendEmail(toList, subject, body, false)
+      handleClose()
     } catch (error) {
-      alert('发送失败: ' + String(error));
+      alert('发送失败: ' + String(error))
     } finally {
-      setIsSending(false);
+      setIsSending(false)
     }
-  };
+  }
 
   const handleClose = () => {
-    setTo('');
-    setSubject('');
-    setBody('');
-    onClose();
-  };
+    setTo('')
+    setSubject('')
+    setBody('')
+    onClose()
+  }
 
-  if (!isOpen) return null;
+  if (!isOpen) return null
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
@@ -71,13 +71,13 @@ export const ComposeModal: React.FC<ComposeModalProps> = ({ isOpen, onClose }) =
         <div className="p-6 space-y-4">
           {/* 收件人 */}
           <div>
-            <label className="block text-sm font-medium text-gray-300 mb-1">
-              收件人
-            </label>
+            <label className="block text-sm font-medium text-gray-300 mb-1">收件人</label>
             <input
               type="text"
               value={to}
-              onChange={(e) => setTo(e.target.value)}
+              onChange={e => {
+                setTo(e.target.value)
+              }}
               placeholder="多个收件人用逗号分隔"
               className="w-full px-4 py-2 border border-gray-600 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent bg-gray-800 text-white placeholder-gray-500"
             />
@@ -85,13 +85,13 @@ export const ComposeModal: React.FC<ComposeModalProps> = ({ isOpen, onClose }) =
 
           {/* 主题 */}
           <div>
-            <label className="block text-sm font-medium text-gray-300 mb-1">
-              主题
-            </label>
+            <label className="block text-sm font-medium text-gray-300 mb-1">主题</label>
             <input
               type="text"
               value={subject}
-              onChange={(e) => setSubject(e.target.value)}
+              onChange={e => {
+                setSubject(e.target.value)
+              }}
               placeholder="邮件主题"
               className="w-full px-4 py-2 border border-gray-600 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent bg-gray-800 text-white placeholder-gray-500"
             />
@@ -99,12 +99,12 @@ export const ComposeModal: React.FC<ComposeModalProps> = ({ isOpen, onClose }) =
 
           {/* 正文 */}
           <div>
-            <label className="block text-sm font-medium text-gray-300 mb-1">
-              正文
-            </label>
+            <label className="block text-sm font-medium text-gray-300 mb-1">正文</label>
             <textarea
               value={body}
-              onChange={(e) => setBody(e.target.value)}
+              onChange={e => {
+                setBody(e.target.value)
+              }}
               placeholder="在此输入邮件正文..."
               rows={12}
               className="w-full px-4 py-3 border border-gray-600 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent resize-none bg-gray-800 text-white placeholder-gray-500"
@@ -120,9 +120,7 @@ export const ComposeModal: React.FC<ComposeModalProps> = ({ isOpen, onClose }) =
 
         {/* 底部操作栏 */}
         <div className="flex items-center justify-between px-6 py-4 bg-gray-800 border-t border-gray-700">
-          <div className="text-sm text-gray-400">
-            支持快捷键: Ctrl+Enter 发送
-          </div>
+          <div className="text-sm text-gray-400">支持快捷键: Ctrl+Enter 发送</div>
           <div className="flex items-center gap-3">
             <button
               onClick={handleClose}
@@ -131,7 +129,9 @@ export const ComposeModal: React.FC<ComposeModalProps> = ({ isOpen, onClose }) =
               取消
             </button>
             <button
-              onClick={handleSend}
+              onClick={() => {
+                void handleSend()
+              }}
               disabled={isSending}
               className="flex items-center gap-2 px-6 py-2 bg-primary-500 hover:bg-primary-600 text-white rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
@@ -142,5 +142,5 @@ export const ComposeModal: React.FC<ComposeModalProps> = ({ isOpen, onClose }) =
         </div>
       </div>
     </div>
-  );
-};
+  )
+}
