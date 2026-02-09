@@ -12,6 +12,9 @@ dist
 dist-ssr
 *.local
 
+# Test coverage
+coverage/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
@@ -22,3 +25,8 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Temporary files
+nul
+tauri-diagnostic.html
+src-tauri/src/commands/email_commands_163.rs
