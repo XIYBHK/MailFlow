@@ -5,26 +5,8 @@ import { EmailList } from './components/EmailList'
 import { EmailDetail } from './components/EmailDetail'
 import { ComposeModal } from './components/ComposeModal'
 import { SettingsModal } from './components/SettingsModal'
-import { TauriDiagnostic } from './test-tauri-ipc'
 import { Mail, AlertCircle } from 'lucide-react'
 import './styles/index.css'
-
-// 诊断日志
-const logDiagnostic = (message: string, data?: unknown) => {
-  console.log(`[App Diagnostic] ${message}`, data ?? '')
-}
-
-// 检查 Tauri 环境
-const checkTauriEnv = () => {
-  if (typeof window === 'undefined') return false
-  const hasTauri = typeof (window as any).__TAURI__ !== 'undefined'
-  logDiagnostic('App 启动 - Tauri 环境检查', {
-    hasTauri,
-    hasCore: hasTauri ? typeof (window as any).__TAURI__.core : 'N/A',
-    windowLocation: window.location.href,
-  })
-  return hasTauri
-}
 
 function App() {
   const {
@@ -43,25 +25,17 @@ function App() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
 
   useEffect(() => {
-    logDiagnostic('App 初始化开始')
-    checkTauriEnv()
-
-    // 延迟加载，确保 Tauri 环境已准备好
     const timer = setTimeout(async () => {
       try {
-        logDiagnostic('开始加载配置')
         await loadConfig()
-        logDiagnostic('配置加载完成')
-      } catch (err) {
-        logDiagnostic('配置加载失败', err)
+      } catch (_err) {
+        // 配置加载失败由 store 统一处理错误
       }
 
       try {
-        logDiagnostic('开始加载账户')
         await loadAccounts()
-        logDiagnostic('账户加载完成', { accountsCount: accounts.length })
-      } catch (err) {
-        logDiagnostic('账户加载失败', err)
+      } catch (_err) {
+        // 账户加载失败由 store 统一处理错误
       }
     }, 100)
 
@@ -91,8 +65,6 @@ function App() {
 
   return (
     <>
-      {/* Tauri 诊断面板 */}
-      <TauriDiagnostic />
       {/* 欢迎页面 */}
       {showWelcome ? (
         <div className="h-screen flex items-center justify-center bg-gradient-to-br from-primary-50 to-blue-50 dark:from-gray-900 dark:to-gray-800">

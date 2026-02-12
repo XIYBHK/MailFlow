@@ -16,6 +16,7 @@ export const EmailDetail: React.FC<{ onBack: () => void }> = React.memo(({ onBac
   } = useEmailStore()
   const [aiSummary, setAiSummary] = React.useState<string>('')
   const [isSummarizing, setIsSummarizing] = React.useState(false)
+  const [isConfirmingDelete, setIsConfirmingDelete] = React.useState(false)
 
   React.useEffect(() => {
     if (currentEmail && !currentEmail.is_read) {
@@ -48,11 +49,14 @@ export const EmailDetail: React.FC<{ onBack: () => void }> = React.memo(({ onBac
 
   const handleDelete = React.useCallback(async () => {
     if (!currentEmail) return
-    if (confirm('确定要删除这封邮件吗？')) {
-      await deleteEmail(selectedFolder, currentEmail.uid)
-      onBack()
+    if (!isConfirmingDelete) {
+      setIsConfirmingDelete(true)
+      return
     }
-  }, [currentEmail, selectedFolder, deleteEmail, onBack])
+    await deleteEmail(selectedFolder, currentEmail.uid)
+    setIsConfirmingDelete(false)
+    onBack()
+  }, [currentEmail, selectedFolder, deleteEmail, onBack, isConfirmingDelete])
 
   if (isLoadingEmail) {
     return (
@@ -133,15 +137,36 @@ export const EmailDetail: React.FC<{ onBack: () => void }> = React.memo(({ onBac
           </button>
 
           {/* 删除按钮 */}
-          <button
-            onClick={() => {
-              void handleDelete()
-            }}
-            className="p-2 hover:bg-red-100 dark:hover:bg-red-900/30 rounded-lg transition-colors text-red-600"
-            title="删除"
-          >
-            <Trash2 className="w-5 h-5" />
-          </button>
+          {isConfirmingDelete ? (
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => {
+                  void handleDelete()
+                }}
+                className="px-3 py-1 text-sm bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors"
+              >
+                确认删除
+              </button>
+              <button
+                onClick={() => {
+                  setIsConfirmingDelete(false)
+                }}
+                className="px-3 py-1 text-sm hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors"
+              >
+                取消
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={() => {
+                void handleDelete()
+              }}
+              className="p-2 hover:bg-red-100 dark:hover:bg-red-900/30 rounded-lg transition-colors text-red-600"
+              title="删除"
+            >
+              <Trash2 className="w-5 h-5" />
+            </button>
+          )}
         </div>
       </div>
 

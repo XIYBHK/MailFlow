@@ -4,22 +4,6 @@ import type { Email, EmailSummary, EmailAccount, AppConfig } from '../types'
 import { handleError } from '../utils/error'
 import { DEFAULT_FOLDERS } from '../constants/email'
 
-// 诊断日志
-const logDiagnostic = (message: string, data?: unknown) => {
-  console.log(`[MailFlow Diagnostic] ${message}`, data ?? '')
-}
-
-// 检查 Tauri 环境
-const checkTauriEnv = () => {
-  const hasTauri = typeof window !== 'undefined' && window.__TAURI__
-  logDiagnostic('Tauri 环境检查', {
-    hasTauri,
-    hasCore: hasTauri ? typeof window.__TAURI__.core : 'N/A',
-    hasInvoke: typeof invoke !== 'undefined',
-  })
-  return hasTauri
-}
-
 interface EmailState {
   // 账户状态
   accounts: EmailAccount[]
@@ -70,9 +54,6 @@ interface EmailState {
   setError: (error: string | null) => void
   clearCurrentEmail: () => void
   setFolder: (folder: string) => void
-
-  // 测试命令
-  testConnection: () => Promise<string>
 }
 
 export const useEmailStore = create<EmailState>((set, get) => ({
@@ -93,18 +74,11 @@ export const useEmailStore = create<EmailState>((set, get) => ({
 
   // 账户管理
   loadAccounts: async () => {
-    logDiagnostic('开始加载账户')
-    checkTauriEnv()
-
     set({ isLoadingAccounts: true, error: null })
     try {
-      logDiagnostic('调用 list_accounts 命令')
       const accounts = await invoke<EmailAccount[]>('list_accounts')
-      logDiagnostic('账户加载成功', { count: accounts.length })
 
-      // 如果没有账户，清空 currentAccount 和 emails
       if (accounts.length === 0) {
-        logDiagnostic('没有账户，清空状态')
         set({
           accounts: [],
           currentAccount: null,
@@ -120,11 +94,9 @@ export const useEmailStore = create<EmailState>((set, get) => ({
       const { currentAccount } = get()
       if (!currentAccount) {
         const defaultAccount = accounts.find(a => a.is_default) || accounts[0]
-        logDiagnostic('设置默认账户', { accountId: defaultAccount?.id })
         set({ currentAccount: defaultAccount })
       }
     } catch (error) {
-      logDiagnostic('账户加载失败', error)
       set({ error: handleError(error), isLoadingAccounts: false })
     }
   },
@@ -181,66 +153,50 @@ export const useEmailStore = create<EmailState>((set, get) => ({
   },
 
   loadEmails: async (folder, limit = 50, offset = 0) => {
-    logDiagnostic('开始加载邮件', { folder, limit, offset })
-
     const { currentAccount, accounts } = get()
-    logDiagnostic('当前账户状态', {
-      hasCurrentAccount: !!currentAccount,
-      accountsCount: accounts.length,
-      currentAccountId: currentAccount?.id,
-    })
 
     if (!currentAccount) {
       if (accounts.length === 0) {
-        logDiagnostic('没有账户，提示用户添加账户')
         set({ error: '请先添加邮箱账户', isLoadingEmails: false, emails: [] })
-      } else {
-        // 有账户但没有 currentAccount，自动设置第一个
-        const firstAccount = accounts[0]
-        if (!firstAccount) {
-          logDiagnostic('第一个账户为空')
-          set({ error: '没有可用的账户', isLoadingEmails: false })
-          return
-        }
-        logDiagnostic('自动设置第一个账户', { accountId: firstAccount.id })
-        set({
-          currentAccount: firstAccount,
-          isLoadingEmails: true,
-          error: null,
-          selectedFolder: folder,
+        return
+      }
+
+      // 有账户但没有 currentAccount，自动设置第一个
+      const firstAccount = accounts[0]
+      if (!firstAccount) {
+        set({ error: '没有可用的账户', isLoadingEmails: false })
+        return
+      }
+      set({
+        currentAccount: firstAccount,
+        isLoadingEmails: true,
+        error: null,
+        selectedFolder: folder,
+      })
+      try {
+        const emails = await invoke<EmailSummary[]>('fetch_emails', {
+          accountId: firstAccount.id,
+          folder,
+          limit,
+          offset,
         })
-        try {
-          logDiagnostic('调用 fetch_emails 命令', { accountId: firstAccount.id, folder })
-          const emails = await invoke<EmailSummary[]>('fetch_emails', {
-            accountId: firstAccount.id,
-            folder,
-            limit,
-            offset,
-          })
-          logDiagnostic('邮件加载成功', { count: emails.length })
-          set({ emails, isLoadingEmails: false })
-        } catch (error) {
-          logDiagnostic('邮件加载失败', error)
-          set({ error: handleError(error), isLoadingEmails: false })
-        }
+        set({ emails, isLoadingEmails: false })
+      } catch (error) {
+        set({ error: handleError(error), isLoadingEmails: false })
       }
       return
     }
 
-    logDiagnostic('使用当前账户加载邮件', { accountId: currentAccount.id })
     set({ isLoadingEmails: true, error: null, selectedFolder: folder })
     try {
-      logDiagnostic('调用 fetch_emails 命令', { accountId: currentAccount.id, folder })
       const emails = await invoke<EmailSummary[]>('fetch_emails', {
         accountId: currentAccount.id,
         folder,
         limit,
         offset,
       })
-      logDiagnostic('邮件加载成功', { count: emails.length })
       set({ emails, isLoadingEmails: false })
     } catch (error) {
-      logDiagnostic('邮件加载失败', error)
       set({ error: handleError(error), isLoadingEmails: false })
     }
   },
@@ -440,26 +396,5 @@ export const useEmailStore = create<EmailState>((set, get) => ({
 
   setFolder: folder => {
     set({ selectedFolder: folder })
-  },
-
-  // 测试连接
-  testConnection: async () => {
-    const { currentAccount } = get()
-    if (!currentAccount) {
-      throw new Error('没有可用的账户')
-    }
-
-    logDiagnostic('测试连接', { accountId: currentAccount.id })
-    try {
-      const result = await invoke<string>('test_connection', {
-        accountId: currentAccount.id,
-      })
-      logDiagnostic('测试连接成功', { result })
-      return result
-    } catch (error) {
-      logDiagnostic('测试连接失败', error)
-      set({ error: handleError(error) })
-      throw error
-    }
   },
 }))

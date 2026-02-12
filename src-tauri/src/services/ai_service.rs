@@ -216,8 +216,9 @@ mod tests {
     use super::*;
 
     #[tokio::test]
+    #[ignore] // 忽略此测试，需要实际的API密钥
     async fn test_classify_email() {
-        let service = AiService::new(
+        let _service = AiService::new(
             "test_key".to_string(),
             "https://open.bigmodel.cn/api/paas/v4/".to_string(),
             "glm-4.7".to_string(),

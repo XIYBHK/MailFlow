@@ -7,24 +7,25 @@ use lettre::{
 
 pub struct SmtpService {
     account: EmailAccount,
+    password: String,
 }
 
 impl SmtpService {
-    pub fn new(account: EmailAccount) -> Self {
-        Self { account }
+    pub fn new(account: EmailAccount, password: String) -> Self {
+        Self { account, password }
     }
 
-    fn create_transport(&self) -> SmtpTransport {
+    fn create_transport(&self) -> Result<SmtpTransport, String> {
         let creds = Credentials::new(
             self.account.email.clone(),
-            self.account.password.clone(),
+            self.password.clone(),
         );
 
-        SmtpTransport::relay(&self.account.smtp_server)
-            .unwrap()
+        Ok(SmtpTransport::relay(&self.account.smtp_server)
+            .map_err(|e| format!("SMTP服务器连接失败: {}", e))?
             .port(self.account.smtp_port)
             .credentials(creds)
-            .build()
+            .build())
     }
 
     pub fn send_email(
@@ -75,7 +76,7 @@ impl SmtpService {
                 .map_err(|e| format!("构建邮件失败: {}", e))?
         };
 
-        let mailer = self.create_transport();
+        let mailer = self.create_transport()?;
         mailer
             .send(&email)
             .map_err(|e| format!("发送邮件失败: {}", e))?;
@@ -84,7 +85,7 @@ impl SmtpService {
     }
 
     pub fn test_connection(&self) -> Result<(), String> {
-        let mailer = self.create_transport();
+        let mailer = self.create_transport()?;
         mailer
             .test_connection()
             .map_err(|e| format!("SMTP连接测试失败: {}", e))?;

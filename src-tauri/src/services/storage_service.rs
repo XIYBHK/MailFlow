@@ -1,4 +1,5 @@
 use crate::models::{AppConfig, EmailAccount, FilterRule};
+use keyring::Entry;
 use sled::{Db, Tree};
 use serde_json;
 use std::path::PathBuf;
@@ -86,10 +87,50 @@ impl StorageService {
     }
 
     pub fn delete_account(&self, id: &str) -> Result<(), String> {
+        // 先获取账户信息以删除密码
+        if let Ok(Some(account)) = self.get_account(id) {
+            let _ = self.delete_password(&account);
+        }
+
         let key = id.as_bytes();
         self.accounts_tree
             .remove(key)
             .map_err(|e| format!("删除账户失败: {}", e))?;
+
+        Ok(())
+    }
+
+    // === 密码管理（使用系统密钥链） ===
+    /// 保存密码到系统密钥链
+    pub fn save_password(&self, account: &EmailAccount, password: &str) -> Result<(), String> {
+        let entry = Entry::new(&account.get_password_key(), &account.email)
+            .map_err(|e| format!("创建密钥链条目失败: {}", e))?;
+
+        entry.set_password(password)
+            .map_err(|e| format!("保存密码失败: {}", e))?;
+
+        Ok(())
+    }
+
+    /// 从系统密钥链获取密码
+    pub fn get_password(&self, account: &EmailAccount) -> Result<Option<String>, String> {
+        let entry = Entry::new(&account.get_password_key(), &account.email)
+            .map_err(|e| format!("创建密钥链条目失败: {}", e))?;
+
+        match entry.get_password() {
+            Ok(password) => Ok(Some(password)),
+            Err(keyring::Error::NoEntry) => Ok(None),
+            Err(e) => Err(format!("获取密码失败: {}", e)),
+        }
+    }
+
+    /// 删除系统密钥链中的密码
+    pub fn delete_password(&self, account: &EmailAccount) -> Result<(), String> {
+        let entry = Entry::new(&account.get_password_key(), &account.email)
+            .map_err(|e| format!("创建密钥链条目失败: {}", e))?;
+
+        entry.delete_credential()
+            .map_err(|e| format!("删除密码失败: {}", e))?;
 
         Ok(())
     }

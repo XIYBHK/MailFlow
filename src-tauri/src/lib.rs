@@ -2,8 +2,8 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 // 模块声明
-mod models;
-mod services;
+pub mod models;
+pub mod services;
 mod commands;
 
 use services::StorageService;

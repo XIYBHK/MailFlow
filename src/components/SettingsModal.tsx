@@ -87,55 +87,21 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
   return (
     <div
       onClick={onClose}
-      style={{
-        position: 'fixed',
-        top: 0,
-        left: 0,
-        width: '100vw',
-        height: '100vh',
-        backgroundColor: 'rgba(0, 0, 0, 0.5)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        zIndex: 999999,
-      }}
+      className="fixed inset-0 bg-black/50 flex items-center justify-center"
+      style={{ zIndex: 999999 }}
     >
       <div
         onClick={e => {
           e.stopPropagation()
         }}
-        style={{
-          backgroundColor: '#1f2937',
-          width: '800px',
-          maxWidth: '90%',
-          maxHeight: '80vh',
-          borderRadius: '12px',
-          padding: '24px',
-          boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)',
-          overflow: 'auto',
-        }}
+        className="bg-gray-800 w-[800px] max-w-[90%] max-h-[80vh] rounded-xl p-6 shadow-2xl overflow-auto"
       >
         {/* 标题栏 */}
-        <div
-          style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            marginBottom: '20px',
-          }}
-        >
-          <h2 style={{ fontSize: '20px', fontWeight: 'bold', margin: 0, color: '#f3f4f6' }}>
-            邮箱账户设置
-          </h2>
+        <div className="flex justify-between items-center mb-5">
+          <h2 className="text-xl font-bold text-gray-100">邮箱账户设置</h2>
           <button
             onClick={onClose}
-            style={{
-              background: 'none',
-              border: 'none',
-              cursor: 'pointer',
-              padding: '4px',
-              color: '#9ca3af',
-            }}
+            className="p-1 text-gray-400 hover:text-gray-200 transition-colors"
           >
             <X size={20} />
           </button>
@@ -143,83 +109,37 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
 
         {/* 成功/错误消息 */}
         {successMessage && (
-          <div
-            style={{
-              padding: '12px',
-              marginBottom: '16px',
-              backgroundColor: '#065f46',
-              color: '#d1fae5',
-              borderRadius: '6px',
-              fontSize: '14px',
-            }}
-          >
-            ✓ {successMessage}
+          <div className="px-3 py-3 mb-4 bg-emerald-900 text-emerald-100 rounded-md text-sm">
+            {successMessage}
           </div>
         )}
 
         {errorMessage && (
-          <div
-            style={{
-              padding: '12px',
-              marginBottom: '16px',
-              backgroundColor: '#7f1d1d',
-              color: '#fecaca',
-              borderRadius: '6px',
-              fontSize: '14px',
-            }}
-          >
-            ✗ {errorMessage}
+          <div className="px-3 py-3 mb-4 bg-red-900 text-red-200 rounded-md text-sm">
+            {errorMessage}
           </div>
         )}
 
         {/* 现有账户列表 */}
         {accounts.length > 0 && (
-          <div style={{ marginBottom: '24px' }}>
-            <h3
-              style={{
-                fontSize: '16px',
-                fontWeight: '600',
-                marginBottom: '12px',
-                color: '#e5e7eb',
-              }}
-            >
-              已添加的账户
-            </h3>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+          <div className="mb-6">
+            <h3 className="text-base font-semibold mb-3 text-gray-200">已添加的账户</h3>
+            <div className="flex flex-col gap-2">
               {accounts.map(account => (
                 <div
                   key={account.id}
-                  style={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    padding: '12px',
-                    border: '1px solid #374151',
-                    borderRadius: '6px',
-                    backgroundColor: '#111827',
-                  }}
+                  className="flex justify-between items-center p-3 border border-gray-700 rounded-md bg-gray-900"
                 >
                   <div>
-                    <div style={{ fontWeight: '500', fontSize: '14px', color: '#f3f4f6' }}>
-                      {account.name}
-                    </div>
-                    <div style={{ fontSize: '12px', color: '#9ca3af' }}>{account.email}</div>
+                    <div className="font-medium text-sm text-gray-100">{account.name}</div>
+                    <div className="text-xs text-gray-400">{account.email}</div>
                   </div>
                   <button
                     onClick={() => {
                       handleDeleteAccount(account.id)
                     }}
                     disabled={isSubmitting}
-                    style={{
-                      padding: '6px 12px',
-                      backgroundColor: '#dc2626',
-                      color: 'white',
-                      border: 'none',
-                      borderRadius: '4px',
-                      fontSize: '12px',
-                      cursor: isSubmitting ? 'not-allowed' : 'pointer',
-                      opacity: isSubmitting ? 0.5 : 1,
-                    }}
+                    className="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded text-xs transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     删除
                   </button>
@@ -234,42 +154,19 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
           onSubmit={e => {
             void handleSubmit(e)
           }}
-          style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}
+          className="flex flex-col gap-4"
         >
-          <h3
-            style={{ fontSize: '16px', fontWeight: '600', marginBottom: '4px', color: '#e5e7eb' }}
-          >
-            添加新账户
-          </h3>
+          <h3 className="text-base font-semibold mb-1 text-gray-200">添加新账户</h3>
 
           <div>
-            <label
-              style={{
-                display: 'block',
-                marginBottom: '4px',
-                fontWeight: '500',
-                fontSize: '14px',
-                color: '#d1d5db',
-              }}
-            >
-              邮箱服务商
-            </label>
+            <label className="block mb-1 font-medium text-sm text-gray-300">邮箱服务商</label>
             <select
               value={provider}
               onChange={e => {
                 setProvider(e.target.value)
               }}
               disabled={isSubmitting}
-              style={{
-                width: '100%',
-                padding: '8px 12px',
-                border: '1px solid #374151',
-                borderRadius: '6px',
-                fontSize: '14px',
-                cursor: isSubmitting ? 'not-allowed' : 'pointer',
-                backgroundColor: '#111827',
-                color: '#f3f4f6',
-              }}
+              className="w-full px-3 py-2 border border-gray-700 rounded-md text-sm bg-gray-900 text-gray-100 disabled:cursor-not-allowed"
             >
               <option value="163">163邮箱</option>
               <option value="qq">QQ邮箱</option>
@@ -278,17 +175,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
           </div>
 
           <div>
-            <label
-              style={{
-                display: 'block',
-                marginBottom: '4px',
-                fontWeight: '500',
-                fontSize: '14px',
-                color: '#d1d5db',
-              }}
-            >
-              账户名称
-            </label>
+            <label className="block mb-1 font-medium text-sm text-gray-300">账户名称</label>
             <input
               type="text"
               value={name}
@@ -297,30 +184,12 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
               }}
               placeholder="如: 工作邮箱"
               disabled={isSubmitting}
-              style={{
-                width: '100%',
-                padding: '8px 12px',
-                border: '1px solid #374151',
-                borderRadius: '6px',
-                fontSize: '14px',
-                backgroundColor: '#111827',
-                color: '#f3f4f6',
-              }}
+              className="w-full px-3 py-2 border border-gray-700 rounded-md text-sm bg-gray-900 text-gray-100 placeholder-gray-500"
             />
           </div>
 
           <div>
-            <label
-              style={{
-                display: 'block',
-                marginBottom: '4px',
-                fontWeight: '500',
-                fontSize: '14px',
-                color: '#d1d5db',
-              }}
-            >
-              邮箱地址
-            </label>
+            <label className="block mb-1 font-medium text-sm text-gray-300">邮箱地址</label>
             <input
               type="email"
               value={email}
@@ -329,30 +198,12 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
               }}
               placeholder="your@email.com"
               disabled={isSubmitting}
-              style={{
-                width: '100%',
-                padding: '8px 12px',
-                border: '1px solid #374151',
-                borderRadius: '6px',
-                fontSize: '14px',
-                backgroundColor: '#111827',
-                color: '#f3f4f6',
-              }}
+              className="w-full px-3 py-2 border border-gray-700 rounded-md text-sm bg-gray-900 text-gray-100 placeholder-gray-500"
             />
           </div>
 
           <div>
-            <label
-              style={{
-                display: 'block',
-                marginBottom: '4px',
-                fontWeight: '500',
-                fontSize: '14px',
-                color: '#d1d5db',
-              }}
-            >
-              密码/授权码
-            </label>
+            <label className="block mb-1 font-medium text-sm text-gray-300">密码/授权码</label>
             <input
               type="password"
               value={password}
@@ -361,52 +212,25 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
               }}
               placeholder="请输入密码或授权码"
               disabled={isSubmitting}
-              style={{
-                width: '100%',
-                padding: '8px 12px',
-                border: '1px solid #374151',
-                borderRadius: '6px',
-                fontSize: '14px',
-                backgroundColor: '#111827',
-                color: '#f3f4f6',
-              }}
+              className="w-full px-3 py-2 border border-gray-700 rounded-md text-sm bg-gray-900 text-gray-100 placeholder-gray-500"
             />
           </div>
 
           <button
             type="submit"
             disabled={isSubmitting}
-            style={{
-              padding: '12px 24px',
-              backgroundColor: isSubmitting ? '#4b5563' : '#3b82f6',
-              color: 'white',
-              border: 'none',
-              borderRadius: '6px',
-              fontSize: '16px',
-              fontWeight: '500',
-              cursor: isSubmitting ? 'not-allowed' : 'pointer',
-              opacity: isSubmitting ? 0.7 : 1,
-            }}
+            className="px-6 py-3 bg-blue-500 hover:bg-blue-600 text-white rounded-md text-base font-medium transition-colors disabled:bg-gray-600 disabled:opacity-70 disabled:cursor-not-allowed"
           >
             {isSubmitting ? '添加中...' : '添加账户'}
           </button>
         </form>
 
         {/* 帮助提示 */}
-        <div
-          style={{
-            marginTop: '20px',
-            padding: '12px',
-            backgroundColor: '#451a03',
-            borderRadius: '6px',
-            fontSize: '12px',
-            color: '#fef3c7',
-          }}
-        >
+        <div className="mt-5 p-3 bg-amber-950 rounded-md text-xs text-amber-100">
           <strong>提示：</strong>
-          <br />• 163邮箱请使用授权码，登录邮箱设置开启IMAP/SMTP服务
-          <br />• QQ邮箱请使用授权码，需要在邮箱设置中生成
-          <br />• Gmail需要使用应用专用密码
+          <br />- 163邮箱请使用授权码，登录邮箱设置开启IMAP/SMTP服务
+          <br />- QQ邮箱请使用授权码，需要在邮箱设置中生成
+          <br />- Gmail需要使用应用专用密码
         </div>
       </div>
     </div>

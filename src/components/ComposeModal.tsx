@@ -14,24 +14,27 @@ export const ComposeModal: React.FC<ComposeModalProps> = ({ isOpen, onClose }) =
   const [body, setBody] = useState('')
   const [isSending, setIsSending] = useState(false)
 
+  const [validationError, setValidationError] = useState('')
+
   const handleSend = async () => {
     if (!to.trim()) {
-      alert('请输入收件人')
+      setValidationError('请输入收件人')
       return
     }
 
     if (!subject.trim()) {
-      alert('请输入主题')
+      setValidationError('请输入主题')
       return
     }
 
+    setValidationError('')
     setIsSending(true)
     try {
       const toList = to.split(',').map(email => email.trim())
       await sendEmail(toList, subject, body, false)
       handleClose()
     } catch (error) {
-      alert('发送失败: ' + String(error))
+      setValidationError('发送失败: ' + String(error))
     } finally {
       setIsSending(false)
     }
@@ -41,6 +44,7 @@ export const ComposeModal: React.FC<ComposeModalProps> = ({ isOpen, onClose }) =
     setTo('')
     setSubject('')
     setBody('')
+    setValidationError('')
     onClose()
   }
 
@@ -69,6 +73,12 @@ export const ComposeModal: React.FC<ComposeModalProps> = ({ isOpen, onClose }) =
 
         {/* 编辑表单 */}
         <div className="p-6 space-y-4">
+          {/* 验证错误提示 */}
+          {validationError && (
+            <div className="px-4 py-2 bg-red-900/30 border border-red-700 rounded-lg text-sm text-red-300">
+              {validationError}
+            </div>
+          )}
           {/* 收件人 */}
           <div>
             <label className="block text-sm font-medium text-gray-300 mb-1">收件人</label>

@@ -34,13 +34,20 @@ export interface EmailSummary {
 export interface EmailAccount {
   id: string
   email: string
-  password: string // 临时添加，用于与后端同步
   imap_server: string
   imap_port: number
   smtp_server: string
   smtp_port: number
   name: string
   is_default: boolean
+}
+
+/// 用于添加账户时的数据（包含密码）
+export interface AddAccountRequest {
+  email: string
+  password: string
+  name: string
+  provider: '163' | 'qq' | 'gmail'
 }
 
 export interface AppConfig {
