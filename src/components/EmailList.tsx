@@ -12,7 +12,6 @@ export const EmailList: React.FC<EmailListProps> = React.memo(({ onEmailSelect, 
   const { emails, isLoadingEmails, loadEmails, selectedFolder, accounts, currentAccount } = useEmailStore()
 
   React.useEffect(() => {
-    // 只有在有账户时才加载邮件
     if (accounts.length > 0 && currentAccount) {
       void loadEmails(selectedFolder)
     }
@@ -21,117 +20,152 @@ export const EmailList: React.FC<EmailListProps> = React.memo(({ onEmailSelect, 
   if (isLoadingEmails && emails.length === 0) {
     return (
       <div className="flex items-center justify-center h-full">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-500"></div>
+        <div className="relative">
+          <div className="w-12 h-12 rounded-full border-2 border-[var(--color-border)]"></div>
+          <div className="absolute inset-0 w-12 h-12 rounded-full border-2 border-transparent border-t-[var(--color-primary)] animate-spin"></div>
+        </div>
       </div>
     )
   }
 
   if (emails.length === 0) {
-    // 没有账户时显示提示
     if (accounts.length === 0) {
       return (
-        <div className="flex flex-col items-center justify-center h-full text-gray-400">
-          <Mail className="w-16 h-16 mb-4" />
-          <p className="text-lg mb-2">还没有添加邮箱账户</p>
-          <p className="text-sm">请点击右上角的设置按钮添加账户</p>
+        <div className="flex flex-col items-center justify-center h-full text-[var(--color-text-tertiary)] animate-fade-in">
+          <div className="w-20 h-20 rounded-2xl bg-[var(--color-bg-secondary)] flex items-center justify-center mb-4">
+            <Mail className="w-10 h-10 opacity-50" />
+          </div>
+          <p className="text-base font-medium mb-1">还没有添加邮箱账户</p>
+          <p className="text-sm opacity-75">请点击右上角的设置按钮添加账户</p>
         </div>
       )
     }
 
-    // 有账户但当前文件夹没有邮件
     return (
-      <div className="flex flex-col items-center justify-center h-full text-gray-400">
-        <Mail className="w-16 h-16 mb-4" />
-        <p className="text-lg">暂无邮件</p>
+      <div className="flex flex-col items-center justify-center h-full text-[var(--color-text-tertiary)] animate-fade-in">
+        <div className="w-16 h-16 rounded-xl bg-[var(--color-bg-secondary)] flex items-center justify-center mb-3">
+          <Mail className="w-8 h-8 opacity-50" />
+        </div>
+        <p className="text-base font-medium">暂无邮件</p>
       </div>
     )
   }
 
   return (
-    <div className="h-full overflow-y-auto">
-      {emails.map(email => (
-        <div
-          key={email.id}
-          onClick={() => {
-            onEmailSelect(email.uid)
-          }}
-          className={`
-            p-4 border-b border-gray-200 dark:border-gray-700 cursor-pointer
-            hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors
-            ${!email.is_read ? 'bg-blue-50 dark:bg-blue-900/20' : ''}
-            ${selectedUid === email.uid ? 'bg-primary-50 dark:bg-primary-900/20 border-l-4 border-l-primary-500' : ''}
-          `}
-        >
-          <div className="flex items-start gap-3">
-            {/* 未读标记 */}
-            {!email.is_read && (
-              <div className="w-2 h-2 rounded-full bg-primary-500 mt-2 flex-shrink-0" />
-            )}
+    <div className="h-full overflow-y-auto p-3">
+      <div className="space-y-2">
+        {emails.map((email, index) => (
+          <div
+            key={email.id}
+            onClick={() => {
+              onEmailSelect(email.uid)
+            }}
+            className={`
+              email-item group relative
+              p-4 rounded-xl cursor-pointer
+              card-hover gradient-border
+              ${!email.is_read ? 'bg-[var(--color-bg-tertiary)]' : 'bg-transparent'}
+              ${selectedUid === email.uid ? 'active bg-[var(--color-bg-active)] shadow-sm' : 'hover:bg-[var(--color-bg-hover)]'}
+            `}
+            style={{ animationDelay: `${Math.min(index, 10) * 30}ms` }}
+          >
+            <div className="flex items-start gap-3">
+              {/* 未读标记 */}
+              {!email.is_read && (
+                <div className="w-2.5 h-2.5 rounded-full bg-[var(--color-primary)] mt-2.5 flex-shrink-0 unread-dot" />
+              )}
 
-            <div className="flex-1 min-w-0">
-              {/* 发件人和日期 */}
-              <div className="flex items-center justify-between mb-1">
-                <span
-                  className={`
-                  font-medium truncate
-                  ${!email.is_read ? 'font-semibold' : ''}
-                `}
-                >
-                  {email.from}
-                </span>
-                <span className="text-xs text-gray-500 dark:text-gray-400 flex items-center gap-1 flex-shrink-0 ml-2">
-                  <Clock className="w-3 h-3" />
-                  {formatEmailDate(email.date)}
-                </span>
-              </div>
-
-              {/* 主题 */}
+              {/* 头像 */}
               <div
                 className={`
-                text-sm mb-1 truncate
-                ${!email.is_read ? 'font-medium' : 'text-gray-700 dark:text-gray-300'}
-              `}
+                  w-10 h-10 rounded-full flex-shrink-0 flex items-center justify-center
+                  text-white text-sm font-semibold
+                  ${!email.is_read
+                    ? 'bg-gradient-to-br from-[var(--color-primary)] to-[var(--color-primary-dark)]'
+                    : 'bg-[var(--color-bg-secondary)] text-[var(--color-text-secondary)]'
+                  }
+                `}
               >
-                {email.subject || '(无主题)'}
+                {email.from.charAt(0).toUpperCase()}
               </div>
 
-              {/* 预览和标签 */}
-              <div className="flex items-center gap-2">
-                <div className="flex-1 text-xs text-gray-500 dark:text-gray-400 truncate">
-                  {email.preview || email.body.substring(0, 100)}
-                </div>
-
-                {/* 附件标记 */}
-                {email.has_attachment && (
-                  <Paperclip className="w-4 h-4 text-gray-400 flex-shrink-0" />
-                )}
-
-                {/* 星标 */}
-                {email.is_starred && (
-                  <Star className="w-4 h-4 text-yellow-500 flex-shrink-0 fill-current" />
-                )}
-
-                {/* 分类标签 */}
-                {email.category && (
+              <div className="flex-1 min-w-0">
+                {/* 发件人和日期 */}
+                <div className="flex items-center justify-between mb-1">
                   <span
                     className={`
-                    px-2 py-0.5 text-xs rounded-full flex-shrink-0
-                    ${getCategoryStyles(email.category)}
-                  `}
+                      text-sm truncate
+                      ${!email.is_read ? 'font-semibold text-[var(--color-text-primary)]' : 'font-medium text-[var(--color-text-secondary)]'}
+                    `}
                   >
-                    {getCategoryLabel(email.category)}
+                    {email.from}
                   </span>
-                )}
+                  <span className="text-xs text-[var(--color-text-tertiary)] flex items-center gap-1 flex-shrink-0 ml-2 opacity-70 group-hover:opacity-100 transition-opacity">
+                    <Clock className="w-3 h-3" />
+                    {formatEmailDate(email.date)}
+                  </span>
+                </div>
+
+                {/* 主题 */}
+                <div
+                  className={`
+                    text-sm mb-1.5 truncate leading-snug
+                    ${!email.is_read ? 'font-medium text-[var(--color-text-primary)]' : 'text-[var(--color-text-secondary)]'}
+                  `}
+                >
+                  {email.subject || '(无主题)'}
+                </div>
+
+                {/* 预览和标签 */}
+                <div className="flex items-center gap-2">
+                  <div className="flex-1 text-xs text-[var(--color-text-tertiary)] truncate leading-relaxed">
+                    {email.preview || email.body.substring(0, 100)}
+                  </div>
+
+                  <div className="flex items-center gap-1.5 flex-shrink-0">
+                    {/* 附件标记 */}
+                    {email.has_attachment && (
+                      <div className="p-1 rounded-md bg-[var(--color-bg-secondary)] group-hover:bg-[var(--color-bg-hover)] transition-colors">
+                        <Paperclip className="w-3.5 h-3.5 text-[var(--color-text-tertiary)]" />
+                      </div>
+                    )}
+
+                    {/* 星标 */}
+                    {email.is_starred && (
+                      <Star className="w-4 h-4 text-[var(--color-accent)] fill-current" />
+                    )}
+
+                    {/* 分类标签 */}
+                    {email.category && (
+                      <span
+                        className={`
+                          px-2 py-0.5 text-[10px] font-medium rounded-full text-white
+                          tag-${email.category}
+                        `}
+                      >
+                        {getCategoryLabel(email.category)}
+                      </span>
+                    )}
+                  </div>
+                </div>
               </div>
             </div>
+
+            {/* 选中状态指示器 */}
+            {selectedUid === email.uid && (
+              <div className="absolute right-3 top-1/2 -translate-y-1/2 w-1.5 h-8 rounded-full bg-[var(--color-primary)]" />
+            )}
           </div>
-        </div>
-      ))}
+        ))}
+      </div>
 
       {/* 加载更多 */}
       {isLoadingEmails && emails.length > 0 && (
-        <div className="p-4 text-center text-gray-500">
-          <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary-500 mx-auto"></div>
+        <div className="p-4 flex justify-center">
+          <div className="relative w-8 h-8">
+            <div className="absolute inset-0 rounded-full border-2 border-[var(--color-border)]"></div>
+            <div className="absolute inset-0 rounded-full border-2 border-transparent border-t-[var(--color-primary)] animate-spin"></div>
+          </div>
         </div>
       )}
     </div>

@@ -1,58 +1,104 @@
 @import 'tailwindcss';
 
+/* Editorial Elegance Theme - 高端杂志美学 */
 @theme {
-  --color-primary-50: #f0f9ff;
-  --color-primary-100: #e0f2fe;
-  --color-primary-200: #bae6fd;
-  --color-primary-300: #7dd3fc;
-  --color-primary-400: #38bdf8;
-  --color-primary-500: #0ea5e9;
-  --color-primary-600: #0284c7;
-  --color-primary-700: #0369a1;
-  --color-primary-800: #075985;
-  --color-primary-900: #0c4a6e;
+  /* 主色调 - 深邃蓝 */
+  --color-primary-50: #f0f7ff;
+  --color-primary-100: #e0efff;
+  --color-primary-200: #bae0ff;
+  --color-primary-300: #7cc8ff;
+  --color-primary-400: #36adff;
+  --color-primary-500: #0c8ce9;
+  --color-primary-600: #006fcb;
+  --color-primary-700: #0057a3;
+  --color-primary-800: #054a88;
+  --color-primary-900: #0a3f71;
+
+  /* 点缀色 - 暖金 */
+  --color-accent-400: #fbbf24;
+  --color-accent-500: #f59e0b;
+  --color-accent-600: #d97706;
 }
 
 :root {
-  --color-primary: #0ea5e9;
-  --color-primary-dark: #0284c7;
-  --color-bg-primary: #ffffff;
-  --color-bg-secondary: #f8fafc;
-  --color-bg-hover: #f1f5f9;
+  --color-primary: #0c8ce9;
+  --color-primary-dark: #006fcb;
+  --color-accent: #f59e0b;
+
+  /* 背景色 */
+  --color-bg-primary: #fafbfc;
+  --color-bg-secondary: #f4f6f8;
+  --color-bg-tertiary: #ffffff;
+  --color-bg-hover: #eef2f6;
+  --color-bg-active: #e8eef5;
+
+  /* 边框和分割线 */
   --color-border: #e2e8f0;
-  --color-text-primary: #0f172a;
+  --color-border-light: #f0f4f8;
+
+  /* 文字颜色 */
+  --color-text-primary: #1a202c;
   --color-text-secondary: #64748b;
+  --color-text-tertiary: #94a3b8;
+  --color-text-link: #0c8ce9;
+
+  /* 阴影 */
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.03);
+  --shadow-md: 0 4px 12px -2px rgb(0 0 0 / 0.06);
+  --shadow-lg: 0 12px 32px -8px rgb(0 0 0 / 0.1);
+  --shadow-xl: 0 20px 48px -12px rgb(0 0 0 / 0.15);
+
+  /* 动画时长 */
+  --duration-fast: 150ms;
+  --duration-normal: 250ms;
+  --duration-slow: 400ms;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --color-bg-primary: #0f172a;
-    --color-bg-secondary: #1e293b;
-    --color-bg-hover: #334155;
-    --color-border: #334155;
-    --color-text-primary: #f8fafc;
+    --color-bg-primary: #0f1419;
+    --color-bg-secondary: #1a2028;
+    --color-bg-tertiary: #232b36;
+    --color-bg-hover: #2a3441;
+    --color-bg-active: #323e4d;
+
+    --color-border: #2a3441;
+    --color-border-light: #1e2732;
+
+    --color-text-primary: #f1f5f9;
     --color-text-secondary: #94a3b8;
+    --color-text-tertiary: #64748b;
+
+    --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.2);
+    --shadow-md: 0 4px 12px -2px rgb(0 0 0 / 0.3);
+    --shadow-lg: 0 12px 32px -8px rgb(0 0 0 / 0.4);
+    --shadow-xl: 0 20px 48px -12px rgb(0 0 0 / 0.5);
   }
 }
 
-body {
-  font-family:
-    -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB',
-    'Microsoft YaHei', 'Helvetica Neue', Helvetica, Arial, sans-serif;
-  margin: 0;
-  padding: 0;
-  background-color: var(--color-bg-primary);
-  color: var(--color-text-primary);
-}
-
+/* 基础样式 */
 * {
   box-sizing: border-box;
 }
 
-/* 自定义滚动条 */
+body {
+  font-family:
+    'SF Pro Display', -apple-system, BlinkMacSystemFont, 'Segoe UI',
+    'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei',
+    'Helvetica Neue', Helvetica, Arial, sans-serif;
+  margin: 0;
+  padding: 0;
+  background-color: var(--color-bg-primary);
+  color: var(--color-text-primary);
+  font-feature-settings: 'kern' 1, 'liga' 1;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* 优雅的滚动条 */
 ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 6px;
+  height: 6px;
 }
 
 ::-webkit-scrollbar-track {
@@ -61,23 +107,91 @@ body {
 
 ::-webkit-scrollbar-thumb {
   background: var(--color-border);
-  border-radius: 4px;
+  border-radius: 3px;
+  transition: background var(--duration-fast) ease;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--color-text-secondary);
+  background: var(--color-text-tertiary);
 }
 
-/* 动画 */
+/* 动画关键帧 */
 @keyframes spin {
-  to {
-    transform: rotate(360deg);
+  to { transform: rotate(360deg); }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
   }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateX(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
 }
 
 .animate-spin {
   animation: spin 1s linear infinite;
 }
+
+.animate-fade-in {
+  animation: fadeIn var(--duration-normal) ease-out;
+}
+
+.animate-slide-up {
+  animation: slideUp var(--duration-normal) ease-out;
+}
+
+.animate-slide-in {
+  animation: slideIn var(--duration-normal) ease-out;
+}
+
+.animate-pulse {
+  animation: pulse 2s ease-in-out infinite;
+}
+
+/* 邮件列表项动效 - 交错动画 */
+.email-item {
+  animation: slideUp var(--duration-normal) ease-out backwards;
+}
+
+.email-item:nth-child(1) { animation-delay: 0ms; }
+.email-item:nth-child(2) { animation-delay: 30ms; }
+.email-item:nth-child(3) { animation-delay: 60ms; }
+.email-item:nth-child(4) { animation-delay: 90ms; }
+.email-item:nth-child(5) { animation-delay: 120ms; }
+.email-item:nth-child(6) { animation-delay: 150ms; }
+.email-item:nth-child(7) { animation-delay: 180ms; }
+.email-item:nth-child(8) { animation-delay: 210ms; }
+.email-item:nth-child(9) { animation-delay: 240ms; }
+.email-item:nth-child(10) { animation-delay: 270ms; }
 
 /* 工具类 */
 .container {
@@ -95,4 +209,183 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
+}
+
+/* 玻璃质感效果 */
+.glass {
+  background: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.9) 0%,
+    rgba(255, 255, 255, 0.7) 100%
+  );
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+@media (prefers-color-scheme: dark) {
+  .glass {
+    background: linear-gradient(
+      135deg,
+      rgba(26, 32, 40, 0.9) 0%,
+      rgba(26, 32, 40, 0.7) 100%
+    );
+  }
+}
+
+/* 卡片悬浮效果 */
+.card-hover {
+  transition:
+    transform var(--duration-fast) ease,
+    box-shadow var(--duration-fast) ease,
+    background-color var(--duration-fast) ease;
+}
+
+.card-hover:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-md);
+}
+
+/* 未读指示器动画 */
+.unread-dot {
+  position: relative;
+}
+
+.unread-dot::after {
+  content: '';
+  position: absolute;
+  inset: -2px;
+  border-radius: 50%;
+  background: inherit;
+  opacity: 0.4;
+  animation: pulse 2s ease-in-out infinite;
+}
+
+/* 邮件正文排版优化 */
+.prose {
+  font-size: 0.9375rem;
+  line-height: 1.75;
+  color: var(--color-text-primary);
+}
+
+.prose h1, .prose h2, .prose h3 {
+  color: var(--color-text-primary);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.prose p {
+  margin-bottom: 1.25em;
+}
+
+.prose a {
+  color: var(--color-text-link);
+  text-decoration: none;
+  border-bottom: 1px solid transparent;
+  transition: border-color var(--duration-fast) ease;
+}
+
+.prose a:hover {
+  border-bottom-color: var(--color-text-link);
+}
+
+/* 邮件内容 HTML 渲染样式 */
+.email-content {
+  font-size: 0.9375rem;
+  line-height: 1.75;
+}
+
+.email-content img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 8px;
+  margin: 1em 0;
+}
+
+.email-content table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1em 0;
+}
+
+.email-content td, .email-content th {
+  padding: 0.5em 0.75em;
+  border: 1px solid var(--color-border);
+}
+
+/* 按钮交互效果 */
+.btn-interactive {
+  position: relative;
+  overflow: hidden;
+  transition:
+    transform var(--duration-fast) ease,
+    box-shadow var(--duration-fast) ease,
+    background-color var(--duration-fast) ease;
+}
+
+.btn-interactive:active {
+  transform: scale(0.97);
+}
+
+.btn-interactive::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    135deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.1) 50%,
+    transparent 100%
+  );
+  opacity: 0;
+  transition: opacity var(--duration-fast) ease;
+}
+
+.btn-interactive:hover::before {
+  opacity: 1;
+}
+
+/* 分类标签样式增强 */
+.tag-work { background: linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%); }
+.tag-personal { background: linear-gradient(135deg, #10b981 0%, #059669 100%); }
+.tag-ads { background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); }
+.tag-subscription { background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%); }
+.tag-spam { background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%); }
+.tag-other { background: linear-gradient(135deg, #6b7280 0%, #4b5563 100%); }
+
+/* 渐变边框效果 */
+.gradient-border {
+  position: relative;
+}
+
+.gradient-border::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: linear-gradient(
+    180deg,
+    var(--color-primary-500) 0%,
+    var(--color-accent-500) 100%
+  );
+  border-radius: 0 2px 2px 0;
+  opacity: 0;
+  transition: opacity var(--duration-fast) ease;
+}
+
+.gradient-border:hover::before,
+.gradient-border.active::before {
+  opacity: 1;
+}
+
+/* 深色模式下的特殊处理 */
+@media (prefers-color-scheme: dark) {
+  .email-content {
+    color: var(--color-text-primary);
+  }
+
+  .email-content a {
+    color: var(--color-primary-300);
+  }
 }
