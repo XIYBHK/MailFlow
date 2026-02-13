@@ -140,7 +140,7 @@ describe('Sidebar 组件', () => {
     )
 
     const selectedButton = screen.getByText('草稿箱').closest('button')
-    expect(selectedButton).toHaveClass('bg-primary-100')
+    expect(selectedButton).toHaveClass('bg-[var(--color-bg-active)]')
   })
 
   it('应该显示当前账户信息', () => {
