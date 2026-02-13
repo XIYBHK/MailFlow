@@ -52,10 +52,15 @@ export const ComposeModal: React.FC<ComposeModalProps> = ({ isOpen, onClose }) =
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <div className="w-full max-w-3xl bg-gray-900 rounded-xl shadow-2xl overflow-hidden">
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="compose-title"
+        className="w-full max-w-3xl bg-gray-900 rounded-xl shadow-2xl overflow-hidden"
+      >
         {/* 标题栏 */}
         <div className="flex items-center justify-between px-6 py-4 bg-gray-800 border-b border-gray-700">
-          <h2 className="text-lg font-semibold text-gray-100">新邮件</h2>
+          <h2 id="compose-title" className="text-lg font-semibold text-gray-100">新邮件</h2>
           <button
             onClick={handleClose}
             className="p-1 hover:bg-gray-700 rounded transition-colors text-gray-400"

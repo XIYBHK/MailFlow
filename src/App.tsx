@@ -120,9 +120,9 @@ function App() {
             />
 
             {/* 邮件列表 */}
-            <div className="w-96 border-r border-gray-200 dark:border-gray-700 flex flex-col">
-              <div className="p-4 border-b border-gray-200 dark:border-gray-700">
-                <h2 className="font-semibold text-lg">{selectedFolder}</h2>
+            <div className="w-96 border-r border-[var(--color-border-light)] flex flex-col bg-[var(--color-bg-secondary)]">
+              <div className="p-4 border-b border-[var(--color-border-light)] bg-[var(--color-bg-tertiary)]">
+                <h2 className="font-semibold text-lg text-[var(--color-text-primary)]">{selectedFolder}</h2>
               </div>
               {selectedUid ? (
                 <div className="flex-1 overflow-hidden">
@@ -138,12 +138,15 @@ function App() {
             {/* 邮件详情 */}
             <div className="flex-1">
               {selectedUid ? (
-                <EmailDetail onBack={handleBackToList} />
+                <EmailDetail onBack={handleBackToList} uid={selectedUid} />
               ) : (
-                <div className="h-full flex items-center justify-center text-gray-400">
-                  <div className="text-center">
-                    <Mail className="w-16 h-16 mx-auto mb-4 opacity-50" />
-                    <p className="text-lg">选择一封邮件查看详情</p>
+                <div className="h-full flex items-center justify-center text-[var(--color-text-tertiary)] bg-[var(--color-bg-tertiary)]">
+                  <div className="text-center animate-fade-in">
+                    <div className="w-20 h-20 rounded-2xl bg-[var(--color-bg-secondary)] flex items-center justify-center mx-auto mb-4">
+                      <Mail className="w-10 h-10 opacity-50" />
+                    </div>
+                    <p className="text-base font-medium mb-1">选择一封邮件查看详情</p>
+                    <p className="text-sm opacity-75">点击左侧列表中的邮件</p>
                   </div>
                 </div>
               )}

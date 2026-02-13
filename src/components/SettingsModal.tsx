@@ -91,6 +91,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
       style={{ zIndex: 999999 }}
     >
       <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="settings-title"
         onClick={e => {
           e.stopPropagation()
         }}
@@ -98,7 +101,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose })
       >
         {/* 标题栏 */}
         <div className="flex justify-between items-center mb-5">
-          <h2 className="text-xl font-bold text-gray-100">邮箱账户设置</h2>
+          <h2 id="settings-title" className="text-xl font-bold text-gray-100">邮箱账户设置</h2>
           <button
             onClick={onClose}
             className="p-1 text-gray-400 hover:text-gray-200 transition-colors"
