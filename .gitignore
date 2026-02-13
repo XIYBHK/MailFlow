@@ -14,6 +14,23 @@ dist-ssr
 
 # Test coverage
 coverage/
+test-results/
+playwright-report/
+.env.e2e
+
+# E2E test outputs
+wdio-report/
+allure-results/
+playwright/.cache/
+trace.zip
+
+# Tauri WebDriver
+tauri-driver.log
+
+# Real email test data (may contain sensitive info)
+e2e-real/.env
+e2e-real/screenshots/
+e2e-real/logs/
 
 # Editor directories and files
 .vscode/*
