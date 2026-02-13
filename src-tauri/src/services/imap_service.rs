@@ -79,6 +79,361 @@ impl ImapService {
         Ok(result)
     }
 
+    /// 获取文件夹状态 (UIDVALIDITY, UIDNEXT)
+    /// 返回 (uid_validity, uid_next)
+    pub async fn get_folder_status(&self, folder: &str) -> Result<(u32, u32), String> {
+        // 163邮箱使用特殊处理
+        if is_163_email(&self.account) {
+            return self.get_folder_status_163(folder).await;
+        }
+
+        let mut client = self.connect().await?;
+
+        let select_result = client
+            .select(folder)
+            .or_else(|_| client.select(format!("\"{}\"", folder)));
+
+        if let Err(e) = select_result {
+            return Err(format!("选择文件夹 '{}' 失败: {}", folder, e));
+        }
+
+        // 从 SELECT 响应中提取 UIDVALIDITY 和 UIDNEXT
+        // 注意：imap crate 的 select 返回 Mailbox，我们需要从中提取
+        // 使用 STATUS 命令获取更可靠
+        let status = client
+            .status(folder, "(UIDVALIDITY UIDNEXT)")
+            .or_else(|_| client.status(&format!("\"{}\"", folder), "(UIDVALIDITY UIDNEXT)"))
+            .map_err(|e| format!("获取文件夹状态失败: {}", e))?;
+
+        client.logout().map_err(|e| format!("登出失败: {}", e))?;
+
+        // 解析 STATUS 响应
+        // 响应格式: * STATUS folder (UIDVALIDITY 1 UIDNEXT 100)
+        let response_str = format!("{:?}", status);
+        let mut uid_validity = 0u32;
+        let mut uid_next = 0u32;
+
+        // 提取 UIDVALIDITY
+        if let Some(pos) = response_str.find("UIDVALIDITY") {
+            let rest = &response_str[pos + 11..];
+            let nums: String = rest.chars().take_while(|c| c.is_ascii_digit()).collect();
+            if let Ok(v) = nums.parse::<u32>() {
+                uid_validity = v;
+            }
+        }
+
+        // 提取 UIDNEXT
+        if let Some(pos) = response_str.find("UIDNEXT") {
+            let rest = &response_str[pos + 7..];
+            let nums: String = rest.chars().take_while(|c| c.is_ascii_digit()).collect();
+            if let Ok(v) = nums.parse::<u32>() {
+                uid_next = v;
+            }
+        }
+
+        Ok((uid_validity, uid_next))
+    }
+
+    /// 163邮箱获取文件夹状态
+    async fn get_folder_status_163(&self, folder: &str) -> Result<(u32, u32), String> {
+        use native_tls::TlsConnector;
+        use std::io::{Read, Write};
+
+        let stream = TcpStream::connect((self.account.imap_server.as_str(), self.account.imap_port))
+            .map_err(|e| format!("TCP连接失败: {}", e))?;
+
+        let tls = if cfg!(debug_assertions) {
+            TlsConnector::builder()
+                .danger_accept_invalid_certs(true)
+                .danger_accept_invalid_hostnames(true)
+                .build()
+        } else {
+            TlsConnector::builder().build()
+        }.map_err(|e| format!("TLS创建失败: {}", e))?;
+
+        let mut tls_stream = tls.connect(&self.account.imap_server, stream)
+            .map_err(|e| format!("TLS连接失败: {}", e))?;
+
+        // 读取欢迎信息
+        let mut buffer = [0u8; 1024];
+        tls_stream.read(&mut buffer).map_err(|e| format!("读取欢迎信息失败: {}", e))?;
+
+        // 发送ID命令
+        let id_cmd = b"A001 ID (\"name\" \"MailFlow\" \"version\" \"1.0\")\r\n";
+        tls_stream.write_all(id_cmd).map_err(|e| format!("发送ID命令失败: {}", e))?;
+        tls_stream.flush().map_err(|e| format!("刷新失败: {}", e))?;
+
+        buffer = [0u8; 1024];
+        tls_stream.read(&mut buffer).map_err(|e| format!("读取ID响应失败: {}", e))?;
+
+        // 发送LOGIN命令
+        let login_cmd = format!("A002 LOGIN \"{}\" \"{}\"\r\n", self.account.email, self.password);
+        tls_stream.write_all(login_cmd.as_bytes()).map_err(|e| format!("发送LOGIN命令失败: {}", e))?;
+        tls_stream.flush().map_err(|e| format!("刷新失败: {}", e))?;
+
+        let mut buffer2 = [0u8; 1024];
+        let n = tls_stream.read(&mut buffer2).map_err(|e| format!("读取LOGIN响应失败: {}", e))?;
+        let response = String::from_utf8_lossy(&buffer2[..n]);
+        if response.contains("NO") || response.contains("BAD") {
+            return Err(format!("163邮箱登录失败: {}", response));
+        }
+
+        // 发送STATUS命令
+        let status_cmd = format!("A003 STATUS \"{}\" (UIDVALIDITY UIDNEXT)\r\n", folder);
+        tls_stream.write_all(status_cmd.as_bytes()).map_err(|e| format!("发送STATUS命令失败: {}", e))?;
+        tls_stream.flush().map_err(|e| format!("刷新失败: {}", e))?;
+
+        // 读取响应
+        let mut response_data = String::new();
+        loop {
+            let mut buffer3 = [0u8; 2048];
+            match tls_stream.read(&mut buffer3) {
+                Ok(n) if n > 0 => {
+                    let chunk = String::from_utf8_lossy(&buffer3[..n]);
+                    response_data.push_str(&chunk);
+                    if chunk.contains("A003 OK") || chunk.contains("A003 BAD") || chunk.contains("A003 NO") {
+                        break;
+                    }
+                }
+                _ => break,
+            }
+        }
+
+        // 发送LOGOUT
+        let _ = tls_stream.write_all(b"A004 LOGOUT\r\n");
+        let _ = tls_stream.flush();
+
+        // 解析响应
+        let mut uid_validity = 0u32;
+        let mut uid_next = 0u32;
+
+        if let Some(pos) = response_data.find("UIDVALIDITY") {
+            let rest = &response_data[pos + 11..];
+            let nums: String = rest.chars().take_while(|c| c.is_ascii_digit()).collect();
+            if let Ok(v) = nums.parse::<u32>() {
+                uid_validity = v;
+            }
+        }
+
+        if let Some(pos) = response_data.find("UIDNEXT") {
+            let rest = &response_data[pos + 7..];
+            let nums: String = rest.chars().take_while(|c| c.is_ascii_digit()).collect();
+            if let Ok(v) = nums.parse::<u32>() {
+                uid_next = v;
+            }
+        }
+
+        Ok((uid_validity, uid_next))
+    }
+
+    /// 增量获取新邮件（UID > last_uid）
+    pub async fn fetch_new_emails(&self, folder: &str, last_uid: u32, limit: usize) -> Result<Vec<EmailSummary>, String> {
+        // 163邮箱使用特殊处理
+        if is_163_email(&self.account) {
+            return self.fetch_new_emails_163(folder, last_uid, limit).await;
+        }
+
+        let mut client = self.connect().await?;
+
+        let select_result = client
+            .select(folder)
+            .or_else(|_| client.select(format!("\"{}\"", folder)));
+
+        if let Err(e) = select_result {
+            return Err(format!("选择文件夹 '{}' 失败: {}", folder, e));
+        }
+
+        // 搜索 UID > last_uid 的邮件
+        let search_criteria = format!("UID {}:*", last_uid + 1);
+        let ids = client
+            .search(&search_criteria)
+            .map_err(|e| format!("搜索新邮件失败: {}", e))?;
+
+        let mut ids_vec: Vec<u32> = ids.into_iter().collect();
+        ids_vec.sort();
+        ids_vec.reverse(); // 最新的在前
+
+        let ids: Vec<u32> = ids_vec.into_iter().take(limit).collect();
+
+        let mut emails = Vec::new();
+
+        for uid in ids {
+            // 获取邮件摘要
+            let responses = client
+                .fetch(uid.to_string(), "(RFC822.SIZE UID FLAGS ENVELOPE)")
+                .map_err(|e| format!("获取邮件摘要失败: {}", e))?;
+
+            if let Some(response) = responses.iter().next() {
+                if let Some(mut summary) = self.parse_email_summary(response, uid) {
+                    // 获取正文预览
+                    match client.fetch(uid.to_string(), "(RFC822.PEEK[HEADER.FIELDS (Subject From Date)] BODY.PEEK[TEXT]<0.2000>)") {
+                        Ok(body_responses) => {
+                            if let Some(body_response) = body_responses.iter().next() {
+                                if let Some(body_text) = body_response.text() {
+                                    let body_str = String::from_utf8_lossy(body_text);
+                                    let (body, _html) = self.extract_body(&body_str);
+                                    summary.preview = body.chars().take(200).collect::<String>().replace('\n', " ");
+                                    summary.body = body.chars().take(1000).collect();
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            eprintln!("获取邮件正文预览失败 (UID: {}): {}", uid, e);
+                        }
+                    }
+                    emails.push(summary);
+                }
+            }
+        }
+
+        client.logout().map_err(|e| format!("登出失败: {}", e))?;
+        Ok(emails)
+    }
+
+    /// 163邮箱增量获取新邮件
+    async fn fetch_new_emails_163(&self, folder: &str, last_uid: u32, limit: usize) -> Result<Vec<EmailSummary>, String> {
+        use native_tls::TlsConnector;
+        use std::io::{Read, Write};
+
+        let stream = TcpStream::connect((self.account.imap_server.as_str(), self.account.imap_port))
+            .map_err(|e| format!("TCP连接失败: {}", e))?;
+
+        let tls = if cfg!(debug_assertions) {
+            TlsConnector::builder()
+                .danger_accept_invalid_certs(true)
+                .danger_accept_invalid_hostnames(true)
+                .build()
+        } else {
+            TlsConnector::builder().build()
+        }.map_err(|e| format!("TLS创建失败: {}", e))?;
+
+        let mut tls_stream = tls.connect(&self.account.imap_server, stream)
+            .map_err(|e| format!("TLS连接失败: {}", e))?;
+
+        // 读取欢迎信息
+        let mut buffer = [0u8; 1024];
+        tls_stream.read(&mut buffer).map_err(|e| format!("读取欢迎信息失败: {}", e))?;
+
+        // 发送ID命令
+        let id_cmd = b"A001 ID (\"name\" \"MailFlow\" \"version\" \"1.0\")\r\n";
+        tls_stream.write_all(id_cmd).map_err(|e| format!("发送ID命令失败: {}", e))?;
+        tls_stream.flush().map_err(|e| format!("刷新失败: {}", e))?;
+
+        buffer = [0u8; 1024];
+        tls_stream.read(&mut buffer).map_err(|e| format!("读取ID响应失败: {}", e))?;
+
+        // 发送LOGIN命令
+        let login_cmd = format!("A002 LOGIN \"{}\" \"{}\"\r\n", self.account.email, self.password);
+        tls_stream.write_all(login_cmd.as_bytes()).map_err(|e| format!("发送LOGIN命令失败: {}", e))?;
+        tls_stream.flush().map_err(|e| format!("刷新失败: {}", e))?;
+
+        let mut buffer2 = [0u8; 1024];
+        let n = tls_stream.read(&mut buffer2).map_err(|e| format!("读取LOGIN响应失败: {}", e))?;
+        let response = String::from_utf8_lossy(&buffer2[..n]);
+        if response.contains("NO") || response.contains("BAD") {
+            return Err(format!("163邮箱登录失败: {}", response));
+        }
+
+        // 选择文件夹
+        let select_cmd = format!("A003 SELECT \"{}\"\r\n", folder);
+        tls_stream.write_all(select_cmd.as_bytes()).map_err(|e| format!("发送SELECT命令失败: {}", e))?;
+        tls_stream.flush().map_err(|e| format!("刷新失败: {}", e))?;
+
+        let mut buffer3 = [0u8; 2048];
+        tls_stream.read(&mut buffer3).map_err(|e| format!("读取SELECT响应失败: {}", e))?;
+
+        // 搜索新邮件 UID > last_uid
+        let search_cmd = format!("A004 UID SEARCH UID {}:*\r\n", last_uid + 1);
+        tls_stream.write_all(search_cmd.as_bytes()).map_err(|e| format!("发送SEARCH命令失败: {}", e))?;
+        tls_stream.flush().map_err(|e| format!("刷新失败: {}", e))?;
+
+        // 读取SEARCH响应
+        let mut uid_list: Vec<u32> = Vec::new();
+        let mut response_data = String::new();
+        loop {
+            let mut buffer4 = [0u8; 4096];
+            match tls_stream.read(&mut buffer4) {
+                Ok(n) if n > 0 => {
+                    let chunk = String::from_utf8_lossy(&buffer4[..n]);
+                    response_data.push_str(&chunk);
+                    if chunk.contains("A004 OK") || chunk.contains("A004 BAD") || chunk.contains("A004 NO") {
+                        break;
+                    }
+                }
+                _ => break,
+            }
+        }
+
+        // 解析SEARCH响应
+        for line in response_data.lines() {
+            let trimmed = line.trim();
+            if trimmed.starts_with("* SEARCH") {
+                let uids: Vec<u32> = trimmed
+                    .split_whitespace()
+                    .skip(2)
+                    .filter_map(|s| s.parse().ok())
+                    .collect();
+                uid_list.extend(uids);
+            }
+        }
+
+        // 过滤掉 <= last_uid 的 UID（因为 UID:* 可能包含已存在的）
+        uid_list.retain(|&uid| uid > last_uid);
+        uid_list.sort_unstable_by(|a, b| b.cmp(a)); // 降序
+        uid_list.truncate(limit);
+
+        // 获取每封邮件
+        let mut emails = Vec::new();
+        for uid in uid_list {
+            match self.fetch_email_163_rfc822_with_stream(&mut tls_stream, folder, uid).await {
+                Ok(email) => emails.push(email),
+                Err(_) => {}
+            }
+        }
+
+        // 发送LOGOUT
+        let _ = tls_stream.write_all(b"A005 LOGOUT\r\n");
+        let _ = tls_stream.flush();
+
+        Ok(emails)
+    }
+
+    /// 使用现有连接获取163邮件
+    async fn fetch_email_163_rfc822_with_stream<S: Read + Write>(
+        &self,
+        stream: &mut S,
+        _folder: &str,
+        uid: u32,
+    ) -> Result<EmailSummary, String> {
+        // 使用新的 tag 避免冲突
+        let fetch_cmd = format!("A006 UID FETCH {} (RFC822)\r\n", uid);
+        stream.write_all(fetch_cmd.as_bytes()).map_err(|e| format!("发送FETCH命令失败: {}", e))?;
+        stream.flush().map_err(|e| format!("刷新失败: {}", e))?;
+
+        // 读取响应
+        let mut response_content = String::new();
+        let mut buffer = [0u8; 4096];
+
+        loop {
+            match stream.read(&mut buffer) {
+                Ok(n) if n > 0 => {
+                    let chunk = &buffer[..n];
+                    let text = String::from_utf8_lossy(chunk);
+                    response_content.push_str(&text);
+
+                    if text.contains("A006 OK") || text.contains("A006 BAD") || text.contains("A006 NO") {
+                        break;
+                    }
+                }
+                _ => break,
+            }
+        }
+
+        let email_content = self.extract_rfc822_from_response(&response_content);
+        self.parse_email_from_rfc822(&email_content, uid)
+            .ok_or_else(|| format!("无法解析邮件 UID: {}", uid))
+    }
+
     pub async fn fetch_emails(
         &self,
         folder: &str,
@@ -130,7 +485,7 @@ impl ImapService {
                                 // 尝试获取正文内容 - text() 返回 Option<&[u8]>
                                 if let Some(body_text) = body_response.text() {
                                     let body_str = String::from_utf8_lossy(body_text);
-                                    let body = self.extract_body(&body_str);
+                                    let (body, _html) = self.extract_body(&body_str);
                                     summary.preview = body.chars().take(200).collect::<String>().replace('\n', " ");
                                     summary.body = body.chars().take(1000).collect();
                                 }
@@ -388,9 +743,8 @@ impl ImapService {
             .unwrap_or_else(|| chrono::Utc::now().to_rfc3339());
 
         // 提取正文内容用于预览
-        let body = self.extract_body(content);
-        let plain_text = self.html_to_text(&body);
-        let preview = plain_text.chars().take(200).collect::<String>().replace('\n', " ");
+        let (body, _html) = self.extract_body(content);
+        let preview = body.chars().take(200).collect::<String>().replace('\n', " ");
 
         // 检查是否有附件
         let has_attachment = content.to_lowercase().contains("content-disposition: attachment");
@@ -758,7 +1112,10 @@ impl ImapService {
             })
             .unwrap_or_else(|| chrono::Utc::now());
 
-        let email_body = self.extract_body(body_str);
+        let (plain_body, html_body) = self.extract_body(body_str);
+
+        // 检查是否有附件
+        let has_attachment = body_str.to_lowercase().contains("content-disposition: attachment");
 
         Email {
             id: format!("{}_{}", self.account.id, uid),
@@ -767,14 +1124,14 @@ impl ImapService {
             from,
             to,
             date,
-            body: email_body.clone(),
-            html_body: None,
+            body: plain_body,
+            html_body: if html_body.is_empty() { None } else { Some(html_body) },
             folder: folder.to_string(),
             flags: Vec::new(),
             is_read: false,
             is_starred: false,
             category: None,
-            has_attachment: false,
+            has_attachment,
             size: body_str.len() as u64,
         }
     }
@@ -792,11 +1149,12 @@ impl ImapService {
 
     /// 提取邮件正文内容
     /// 改进版：支持 MIME 多部分邮件解析和字符集检测
-    fn extract_body(&self, email: &str) -> String {
+    /// 返回 (plain_text, html_text) 元组
+    fn extract_body(&self, email: &str) -> (String, String) {
         // 查找头部和正文的分隔（第一个空行）
         let parts: Vec<&str> = email.splitn(2, "\n\n").collect();
         if parts.len() < 2 {
-            return String::new();
+            return (String::new(), String::new());
         }
 
         let headers = parts[0];
@@ -808,7 +1166,11 @@ impl ImapService {
         let content_type_lower = content_type_full.to_lowercase();
 
         if content_type_lower.contains("multipart/") {
-            // 尝试提取 boundary
+            // 使用更健壮的 boundary 提取
+            if let Some(boundary) = self.extract_boundary(&content_type_full) {
+                return self.extract_multipart_body(body, &boundary);
+            }
+            // 后备方案：简单的 boundary 提取
             if let Some(boundary) = content_type_lower.split("boundary=").nth(1) {
                 let boundary = boundary.trim().trim_matches('"').trim_matches('\'');
                 return self.extract_multipart_body(body, boundary);
@@ -831,11 +1193,67 @@ impl ImapService {
             self.try_decode_with_charset(body.as_bytes(), &charset)
         };
 
-        decoded_body.trim().to_string()
+        // 非 multipart 邮件：检查是否是 HTML
+        if content_type_lower.contains("text/html") {
+            let html = decoded_body.trim().to_string();
+            let plain = self.html_to_text(&html);
+            (plain, html)
+        } else {
+            (decoded_body.trim().to_string(), String::new())
+        }
     }
 
-    /// 从 MIME 多部分邮件中提取纯文本内容
-    fn extract_multipart_body(&self, body: &str, boundary: &str) -> String {
+    /// 更健壮的 boundary 提取
+    fn extract_boundary(&self, content_type: &str) -> Option<String> {
+        let content_type_lower = content_type.to_lowercase();
+        if let Some(boundary_pos) = content_type_lower.find("boundary=") {
+            let boundary_str = &content_type[boundary_pos + 9..];
+            // 处理引号包围、分号结尾、跨行等情况
+            let mut boundary = String::new();
+            let mut in_quotes = false;
+            let mut started = false;
+
+            for ch in boundary_str.chars() {
+                match ch {
+                    '"' => {
+                        if started && !in_quotes { break; }
+                        in_quotes = !in_quotes;
+                        started = true;
+                    }
+                    ';' | ' ' | '\t' | '\n' | '\r' if !in_quotes => {
+                        if started { break; }
+                    }
+                    _ => {
+                        boundary.push(ch);
+                        started = true;
+                    }
+                }
+            }
+
+            let boundary = boundary.trim().to_string();
+            if !boundary.is_empty() { return Some(boundary); }
+        }
+        None
+    }
+
+    /// 合并被折叠的头部行（RFC 822）
+    fn unfold_headers(&self, headers: &str) -> String {
+        let mut result = String::new();
+        for line in headers.lines() {
+            if line.starts_with(' ') || line.starts_with('\t') {
+                // 折叠行：移除前导空白并追加到上一行
+                result.push_str(line.trim_start());
+            } else {
+                if !result.is_empty() { result.push('\n'); }
+                result.push_str(line);
+            }
+        }
+        result
+    }
+
+    /// 从 MIME 多部分邮件中提取纯文本和 HTML 内容
+    /// 返回 (plain_text, html_text) 元组
+    fn extract_multipart_body(&self, body: &str, boundary: &str) -> (String, String) {
         let delimiter = format!("--{}", boundary);
         let end_marker = format!("--{}--", boundary);
 
@@ -856,10 +1274,18 @@ impl ImapService {
                 // 保存最后一个部分
                 if in_part {
                     let decoded = self.decode_part_content(&current_content, &current_transfer_encoding, &current_content_type);
-                    if current_content_type.to_lowercase().contains("text/plain") {
+                    if current_content_type.to_lowercase().contains("text/plain") && text_plain_content.is_empty() {
                         text_plain_content = decoded;
-                    } else if current_content_type.to_lowercase().contains("text/html") {
+                    } else if current_content_type.to_lowercase().contains("text/html") && text_html_content.is_empty() {
                         text_html_content = decoded;
+                    } else if current_content_type.to_lowercase().contains("multipart/") {
+                        // 处理嵌套 multipart
+                        if let Some(nested_boundary) = self.extract_boundary(&current_content_type) {
+                            let (nested_plain, nested_html) =
+                                self.extract_multipart_body(&decoded, &nested_boundary);
+                            if text_plain_content.is_empty() { text_plain_content = nested_plain; }
+                            if text_html_content.is_empty() { text_html_content = nested_html; }
+                        }
                     }
                 }
                 break;
@@ -870,10 +1296,18 @@ impl ImapService {
                 // 保存之前部分的内容
                 if in_part {
                     let decoded = self.decode_part_content(&current_content, &current_transfer_encoding, &current_content_type);
-                    if current_content_type.to_lowercase().contains("text/plain") {
+                    if current_content_type.to_lowercase().contains("text/plain") && text_plain_content.is_empty() {
                         text_plain_content = decoded;
-                    } else if current_content_type.to_lowercase().contains("text/html") {
+                    } else if current_content_type.to_lowercase().contains("text/html") && text_html_content.is_empty() {
                         text_html_content = decoded;
+                    } else if current_content_type.to_lowercase().contains("multipart/") {
+                        // 处理嵌套 multipart
+                        if let Some(nested_boundary) = self.extract_boundary(&current_content_type) {
+                            let (nested_plain, nested_html) =
+                                self.extract_multipart_body(&decoded, &nested_boundary);
+                            if text_plain_content.is_empty() { text_plain_content = nested_plain; }
+                            if text_html_content.is_empty() { text_html_content = nested_html; }
+                        }
                     }
                 }
                 // 开始新部分
@@ -893,11 +1327,12 @@ impl ImapService {
             // 收集头部
             if !in_part_content {
                 if trimmed.is_empty() {
-                    // 头部结束，解析头部信息
-                    let headers_lower = current_headers.to_lowercase();
+                    // 头部结束，解析头部信息（先处理头部折叠）
+                    let unfolded_headers = self.unfold_headers(&current_headers);
+                    let headers_lower = unfolded_headers.to_lowercase();
                     // 提取 Content-Type
                     if let Some(ct_start) = headers_lower.find("content-type:") {
-                        let ct_line = &current_headers[ct_start..];
+                        let ct_line = &unfolded_headers[ct_start..];
                         if let Some(ct_end) = ct_line.find('\n') {
                             current_content_type = ct_line[..ct_end].to_string();
                         } else {
@@ -906,7 +1341,7 @@ impl ImapService {
                     }
                     // 提取 Content-Transfer-Encoding
                     if let Some(cte_start) = headers_lower.find("content-transfer-encoding:") {
-                        let cte_line = &current_headers[cte_start..];
+                        let cte_line = &unfolded_headers[cte_start..];
                         if let Some(cte_end) = cte_line.find('\n') {
                             current_transfer_encoding = cte_line[..cte_end].to_string();
                         } else {
@@ -925,14 +1360,17 @@ impl ImapService {
             }
         }
 
-        // 优先返回 text/plain，如果没有则返回转换后的 text/html
-        if !text_plain_content.is_empty() {
+        // 返回 (plain_text, html_text) 元组
+        let plain = if !text_plain_content.is_empty() {
             text_plain_content.trim().to_string()
         } else if !text_html_content.is_empty() {
             self.html_to_text(&text_html_content)
         } else {
             String::new()
-        }
+        };
+
+        let html = text_html_content.trim().to_string();
+        (plain, html)
     }
 
     /// 解码邮件部分内容

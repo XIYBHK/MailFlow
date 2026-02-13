@@ -76,3 +76,22 @@ impl EmailCategory {
         }
     }
 }
+
+/// 文件夹同步状态
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FolderSyncState {
+    pub account_id: String,
+    pub folder: String,
+    pub last_uid: u32,
+    pub uid_validity: u32,
+    pub last_sync_time: i64,
+}
+
+/// 缓存的邮件摘要列表
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CachedEmailList {
+    pub account_id: String,
+    pub folder: String,
+    pub emails: Vec<EmailSummary>,
+    pub last_updated: i64,
+}

@@ -1,4 +1,4 @@
-use crate::models::{AppConfig, EmailAccount, FilterRule};
+use crate::models::{AppConfig, EmailAccount, FilterRule, FolderSyncState, CachedEmailList, EmailSummary, Email};
 use keyring::Entry;
 use sled::{Db, Tree};
 use serde_json;
@@ -10,6 +10,9 @@ pub struct StorageService {
     accounts_tree: Arc<Tree>,
     config_tree: Arc<Tree>,
     emails_cache_tree: Arc<Tree>,
+    sync_state_tree: Arc<Tree>,
+    email_summaries_tree: Arc<Tree>,
+    email_details_tree: Arc<Tree>,
 }
 
 impl StorageService {
@@ -36,11 +39,23 @@ impl StorageService {
         let emails_cache_tree = db.open_tree("emails_cache")
             .map_err(|e| format!("打开emails_cache表失败: {}", e))?;
 
+        let sync_state_tree = db.open_tree("sync_state")
+            .map_err(|e| format!("打开sync_state表失败: {}", e))?;
+
+        let email_summaries_tree = db.open_tree("email_summaries")
+            .map_err(|e| format!("打开email_summaries表失败: {}", e))?;
+
+        let email_details_tree = db.open_tree("email_details")
+            .map_err(|e| format!("打开email_details表失败: {}", e))?;
+
         Ok(Self {
             db: Arc::new(db),
             accounts_tree: Arc::new(accounts_tree),
             config_tree: Arc::new(config_tree),
             emails_cache_tree: Arc::new(emails_cache_tree),
+            sync_state_tree: Arc::new(sync_state_tree),
+            email_summaries_tree: Arc::new(email_summaries_tree),
+            email_details_tree: Arc::new(email_details_tree),
         })
     }
 
@@ -245,6 +260,157 @@ impl StorageService {
         Ok(())
     }
 
+    // === 文件夹同步状态 ===
+
+    /// 保存文件夹同步状态
+    pub fn save_folder_sync_state(&self, state: &FolderSyncState) -> Result<(), String> {
+        let key = format!("{}:{}", state.account_id, state.folder);
+        let value = serde_json::to_vec(state)
+            .map_err(|e| format!("序列化同步状态失败: {}", e))?;
+
+        self.sync_state_tree
+            .insert(key.as_bytes(), value)
+            .map_err(|e| format!("保存同步状态失败: {}", e))?;
+
+        Ok(())
+    }
+
+    /// 获取文件夹同步状态
+    pub fn get_folder_sync_state(&self, account_id: &str, folder: &str) -> Result<Option<FolderSyncState>, String> {
+        let key = format!("{}:{}", account_id, folder);
+        let value = self.sync_state_tree.get(key.as_bytes())
+            .map_err(|e| format!("获取同步状态失败: {}", e))?;
+
+        match value {
+            Some(v) => {
+                let state = serde_json::from_slice(&v)
+                    .map_err(|e| format!("反序列化同步状态失败: {}", e))?;
+                Ok(Some(state))
+            }
+            None => Ok(None),
+        }
+    }
+
+    // === 邮件摘要缓存 ===
+
+    /// 缓存邮件摘要列表
+    pub fn cache_email_summaries(&self, account_id: &str, folder: &str, emails: &[EmailSummary]) -> Result<(), String> {
+        let key = format!("{}:{}", account_id, folder);
+        let cached = CachedEmailList {
+            account_id: account_id.to_string(),
+            folder: folder.to_string(),
+            emails: emails.to_vec(),
+            last_updated: chrono::Utc::now().timestamp(),
+        };
+        let value = serde_json::to_vec(&cached)
+            .map_err(|e| format!("序列化邮件列表失败: {}", e))?;
+
+        self.email_summaries_tree
+            .insert(key.as_bytes(), value)
+            .map_err(|e| format!("缓存邮件列表失败: {}", e))?;
+
+        Ok(())
+    }
+
+    /// 获取缓存的邮件摘要列表
+    pub fn get_cached_email_summaries(&self, account_id: &str, folder: &str) -> Result<Option<CachedEmailList>, String> {
+        let key = format!("{}:{}", account_id, folder);
+        let value = self.email_summaries_tree.get(key.as_bytes())
+            .map_err(|e| format!("获取缓存邮件列表失败: {}", e))?;
+
+        match value {
+            Some(v) => {
+                let cached = serde_json::from_slice(&v)
+                    .map_err(|e| format!("反序列化邮件列表失败: {}", e))?;
+                Ok(Some(cached))
+            }
+            None => Ok(None),
+        }
+    }
+
+    /// 追加新邮件到缓存
+    pub fn append_cached_emails(&self, account_id: &str, folder: &str, new_emails: &[EmailSummary]) -> Result<(), String> {
+        let mut cached = self.get_cached_email_summaries(account_id, folder)?
+            .unwrap_or_else(|| CachedEmailList {
+                account_id: account_id.to_string(),
+                folder: folder.to_string(),
+                emails: Vec::new(),
+                last_updated: 0,
+            });
+
+        // 将新邮件插入到列表开头（最新的在前）
+        for email in new_emails.iter().rev() {
+            // 避免重复
+            if !cached.emails.iter().any(|e| e.uid == email.uid) {
+                cached.emails.insert(0, email.clone());
+            }
+        }
+
+        cached.last_updated = chrono::Utc::now().timestamp();
+        self.cache_email_summaries(account_id, folder, &cached.emails)
+    }
+
+    // === 邮件详情缓存 ===
+
+    /// 缓存邮件详情
+    pub fn cache_email_detail(&self, account_id: &str, folder: &str, uid: u32, email: &Email) -> Result<(), String> {
+        let key = format!("{}:{}:{}", account_id, folder, uid);
+        let value = serde_json::to_vec(email)
+            .map_err(|e| format!("序列化邮件详情失败: {}", e))?;
+
+        self.email_details_tree
+            .insert(key.as_bytes(), value)
+            .map_err(|e| format!("缓存邮件详情失败: {}", e))?;
+
+        Ok(())
+    }
+
+    /// 获取缓存的邮件详情
+    pub fn get_cached_email_detail(&self, account_id: &str, folder: &str, uid: u32) -> Result<Option<Email>, String> {
+        let key = format!("{}:{}:{}", account_id, folder, uid);
+        let value = self.email_details_tree.get(key.as_bytes())
+            .map_err(|e| format!("获取缓存邮件详情失败: {}", e))?;
+
+        match value {
+            Some(v) => {
+                let email = serde_json::from_slice(&v)
+                    .map_err(|e| format!("反序列化邮件详情失败: {}", e))?;
+                Ok(Some(email))
+            }
+            None => Ok(None),
+        }
+    }
+
+    /// 清除文件夹的所有缓存
+    pub fn clear_all_cache(&self, account_id: &str, folder: &str) -> Result<(), String> {
+        // 清除邮件摘要缓存
+        let key = format!("{}:{}", account_id, folder);
+        self.email_summaries_tree
+            .remove(key.as_bytes())
+            .map_err(|e| format!("清除邮件摘要缓存失败: {}", e))?;
+
+        // 清除同步状态
+        self.sync_state_tree
+            .remove(key.as_bytes())
+            .map_err(|e| format!("清除同步状态失败: {}", e))?;
+
+        // 清除邮件详情缓存（扫描前缀）
+        let prefix = format!("{}:{}:", account_id, folder);
+        let keys_to_remove: Vec<Vec<u8>> = self.email_details_tree
+            .scan_prefix(prefix.as_bytes())
+            .map(|item| item.map(|(k, _)| k.to_vec()))
+            .collect::<Result<_, _>>()
+            .map_err(|e| format!("扫描邮件详情缓存失败: {}", e))?;
+
+        for key in keys_to_remove {
+            self.email_details_tree
+                .remove(&key)
+                .map_err(|e| format!("删除邮件详情缓存失败: {}", e))?;
+        }
+
+        Ok(())
+    }
+
     pub fn flush(&self) -> Result<(), String> {
         self.db
             .flush()
@@ -260,6 +426,9 @@ impl Clone for StorageService {
             accounts_tree: Arc::clone(&self.accounts_tree),
             config_tree: Arc::clone(&self.config_tree),
             emails_cache_tree: Arc::clone(&self.emails_cache_tree),
+            sync_state_tree: Arc::clone(&self.sync_state_tree),
+            email_summaries_tree: Arc::clone(&self.email_summaries_tree),
+            email_details_tree: Arc::clone(&self.email_details_tree),
         }
     }
 }

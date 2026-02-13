@@ -220,6 +220,7 @@ describe('emailStore', () => {
           folder: 'INBOX',
           limit: 50,
           offset: 0,
+          forceRefresh: false,
         })
         expect(useEmailStore.getState().emails).toEqual(mockEmails)
         expect(useEmailStore.getState().selectedFolder).toBe('INBOX')
@@ -240,6 +241,7 @@ describe('emailStore', () => {
           folder: 'INBOX',
           limit: 100,
           offset: 50,
+          forceRefresh: false,
         })
       })
 
@@ -304,6 +306,7 @@ describe('emailStore', () => {
           accountId: '1',
           folder: 'INBOX',
           uid: 1,
+          forceRefresh: false,
         })
         expect(useEmailStore.getState().currentEmail).toEqual(mockEmail)
         expect(useEmailStore.getState().isLoadingEmail).toBe(false)

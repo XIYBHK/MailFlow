@@ -32,8 +32,9 @@ interface EmailState {
 
   // Actions - 邮件操作
   loadFolders: () => Promise<void>
-  loadEmails: (folder: string, limit?: number, offset?: number) => Promise<void>
-  loadEmailDetail: (folder: string, uid: number) => Promise<void>
+  loadEmails: (folder: string, limit?: number, offset?: number, forceRefresh?: boolean) => Promise<void>
+  loadEmailDetail: (folder: string, uid: number, forceRefresh?: boolean) => Promise<void>
+  refreshEmails: () => Promise<void>
   markAsRead: (folder: string, uid: number) => Promise<void>
   deleteEmail: (folder: string, uid: number) => Promise<void>
   moveEmail: (folder: string, uid: number, destFolder: string) => Promise<void>
@@ -152,7 +153,7 @@ export const useEmailStore = create<EmailState>((set, get) => ({
     }
   },
 
-  loadEmails: async (folder, limit = 50, offset = 0) => {
+  loadEmails: async (folder, limit = 50, offset = 0, forceRefresh = false) => {
     const { currentAccount, accounts } = get()
 
     if (!currentAccount) {
@@ -179,6 +180,7 @@ export const useEmailStore = create<EmailState>((set, get) => ({
           folder,
           limit,
           offset,
+          forceRefresh,
         })
         set({ emails, isLoadingEmails: false })
       } catch (error) {
@@ -194,6 +196,7 @@ export const useEmailStore = create<EmailState>((set, get) => ({
         folder,
         limit,
         offset,
+        forceRefresh,
       })
       set({ emails, isLoadingEmails: false })
     } catch (error) {
@@ -201,7 +204,7 @@ export const useEmailStore = create<EmailState>((set, get) => ({
     }
   },
 
-  loadEmailDetail: async (folder, uid) => {
+  loadEmailDetail: async (folder, uid, forceRefresh = false) => {
     const { currentAccount } = get()
     if (!currentAccount) {
       set({ error: '请先选择邮箱账户' })
@@ -214,11 +217,17 @@ export const useEmailStore = create<EmailState>((set, get) => ({
         accountId: currentAccount.id,
         folder,
         uid,
+        forceRefresh,
       })
       set({ currentEmail: email, isLoadingEmail: false })
     } catch (error) {
       set({ error: handleError(error), isLoadingEmail: false })
     }
+  },
+
+  refreshEmails: async () => {
+    const { selectedFolder } = get()
+    await get().loadEmails(selectedFolder, 50, 0, true)
   },
 
   markAsRead: async (folder, uid) => {

@@ -40,10 +40,11 @@ pub async fn delete_filter_rule(
 
 #[tauri::command]
 pub async fn clear_email_cache(
+    account_id: String,
     folder: String,
     storage: StorageState<'_>,
 ) -> Result<(), String> {
-    storage.clear_folder_cache(&folder)
+    storage.clear_all_cache(&account_id, &folder)
 }
 
 #[tauri::command]
