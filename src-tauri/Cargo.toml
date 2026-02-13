@@ -42,3 +42,6 @@ uuid = { version = "1", features = ["v4", "serde"] }
 
 # 安全存储密码
 keyring = { version = "3", features = ["windows-native", "apple-native", "linux-native"] }
+
+# 字符编码转换
+encoding_rs = "0.8"

@@ -791,7 +791,7 @@ impl ImapService {
     }
 
     /// 提取邮件正文内容
-    /// 改进版：支持 MIME 多部分邮件解析
+    /// 改进版：支持 MIME 多部分邮件解析和字符集检测
     fn extract_body(&self, email: &str) -> String {
         // 查找头部和正文的分隔（第一个空行）
         let parts: Vec<&str> = email.splitn(2, "\n\n").collect();
@@ -802,33 +802,35 @@ impl ImapService {
         let headers = parts[0];
         let body = parts[1];
 
-        // 检查 Content-Type 是否为多部分
-        let content_type = self.extract_header(headers, "Content-Type")
-            .unwrap_or_default()
-            .to_lowercase();
+        // 获取完整的 Content-Type（包含 charset）
+        let content_type_full = self.extract_header(headers, "Content-Type")
+            .unwrap_or_default();
+        let content_type_lower = content_type_full.to_lowercase();
 
-        if content_type.contains("multipart/") {
+        if content_type_lower.contains("multipart/") {
             // 尝试提取 boundary
-            if let Some(boundary) = content_type.split("boundary=").nth(1) {
+            if let Some(boundary) = content_type_lower.split("boundary=").nth(1) {
                 let boundary = boundary.trim().trim_matches('"').trim_matches('\'');
                 return self.extract_multipart_body(body, boundary);
             }
         }
 
+        // 提取字符集
+        let charset = self.extract_charset(&content_type_full);
+
         // 检查内容传输编码
         let transfer_encoding = self.extract_header(headers, "Content-Transfer-Encoding")
-            .unwrap_or_default()
-            .to_lowercase();
+            .unwrap_or_default();
 
-        let decoded_body = if transfer_encoding.contains("base64") {
-            self.decode_base64(body)
-        } else if transfer_encoding.contains("quoted-printable") {
-            self.decode_quoted_printable(body)
+        let decoded_body = if transfer_encoding.to_lowercase().contains("base64") {
+            self.decode_base64_with_charset(body, &charset)
+        } else if transfer_encoding.to_lowercase().contains("quoted-printable") {
+            self.decode_quoted_printable_with_charset(body, &charset)
         } else {
-            body.to_string()
+            // 对于普通文本，尝试使用检测到的字符集
+            self.try_decode_with_charset(body.as_bytes(), &charset)
         };
 
-        // 处理字符编码（简化处理，实际应该根据 charset 解码）
         decoded_body.trim().to_string()
     }
 
@@ -853,10 +855,10 @@ impl ImapService {
             if trimmed == end_marker {
                 // 保存最后一个部分
                 if in_part {
-                    let decoded = self.decode_part_content(&current_content, &current_transfer_encoding);
-                    if current_content_type.contains("text/plain") {
+                    let decoded = self.decode_part_content(&current_content, &current_transfer_encoding, &current_content_type);
+                    if current_content_type.to_lowercase().contains("text/plain") {
                         text_plain_content = decoded;
-                    } else if current_content_type.contains("text/html") {
+                    } else if current_content_type.to_lowercase().contains("text/html") {
                         text_html_content = decoded;
                     }
                 }
@@ -867,10 +869,10 @@ impl ImapService {
             if trimmed == delimiter {
                 // 保存之前部分的内容
                 if in_part {
-                    let decoded = self.decode_part_content(&current_content, &current_transfer_encoding);
-                    if current_content_type.contains("text/plain") {
+                    let decoded = self.decode_part_content(&current_content, &current_transfer_encoding, &current_content_type);
+                    if current_content_type.to_lowercase().contains("text/plain") {
                         text_plain_content = decoded;
-                    } else if current_content_type.contains("text/html") {
+                    } else if current_content_type.to_lowercase().contains("text/html") {
                         text_html_content = decoded;
                     }
                 }
@@ -934,40 +936,97 @@ impl ImapService {
     }
 
     /// 解码邮件部分内容
-    fn decode_part_content(&self, content: &str, transfer_encoding: &str) -> String {
+    fn decode_part_content(&self, content: &str, transfer_encoding: &str, content_type: &str) -> String {
         let encoding_lower = transfer_encoding.to_lowercase();
+        let charset = self.extract_charset(content_type);
+
         let decoded = if encoding_lower.contains("base64") {
-            self.decode_base64(content)
+            self.decode_base64_with_charset(content, &charset)
         } else if encoding_lower.contains("quoted-printable") {
-            self.decode_quoted_printable(content)
+            self.decode_quoted_printable_with_charset(content, &charset)
         } else {
-            content.to_string()
+            self.try_decode_with_charset(content.as_bytes(), &charset)
         };
         decoded.trim().to_string()
     }
 
-    /// 解码 Base64 编码的内容
-    fn decode_base64(&self, content: &str) -> String {
+    /// 从 Content-Type 中提取字符集
+    fn extract_charset(&self, content_type: &str) -> String {
+        let lower = content_type.to_lowercase();
+        if let Some(charset_pos) = lower.find("charset=") {
+            let charset_str = &content_type[charset_pos + 8..];
+            let charset = charset_str
+                .split(&[';', ' ', '"', '\''][..])
+                .next()
+                .unwrap_or("utf-8")
+                .trim()
+                .to_lowercase();
+            return charset;
+        }
+        "utf-8".to_string()
+    }
+
+    /// 尝试使用指定字符集解码字节
+    fn try_decode_with_charset(&self, bytes: &[u8], charset: &str) -> String {
+        let charset_lower = charset.to_lowercase();
+
+        // 首先尝试 UTF-8
+        if charset_lower.contains("utf-8") || charset_lower.contains("utf8") {
+            if let Ok(s) = String::from_utf8(bytes.to_vec()) {
+                return s;
+            }
+        }
+
+        // 尝试 GBK/GB2312
+        if charset_lower.contains("gbk") || charset_lower.contains("gb2312") || charset_lower.contains("gb18030") {
+            let (decoded, _encoding, _had_errors) = encoding_rs::GBK.decode(bytes);
+            return decoded.to_string();
+        }
+
+        // 尝试 Big5
+        if charset_lower.contains("big5") {
+            let (decoded, _encoding, _had_errors) = encoding_rs::BIG5.decode(bytes);
+            return decoded.to_string();
+        }
+
+        // 尝试 ISO-8859-1
+        if charset_lower.contains("iso-8859-1") || charset_lower.contains("latin1") {
+            let (decoded, _encoding, _had_errors) = encoding_rs::WINDOWS_1252.decode(bytes);
+            return decoded.to_string();
+        }
+
+        // 默认：先尝试 UTF-8，失败则尝试 GBK
+        if let Ok(s) = String::from_utf8(bytes.to_vec()) {
+            return s;
+        }
+
+        // 尝试 GBK 作为后备
+        let (decoded, _, _) = encoding_rs::GBK.decode(bytes);
+        decoded.to_string()
+    }
+
+    /// 解码 Base64 编码的内容（支持字符集）
+    fn decode_base64_with_charset(&self, content: &str, charset: &str) -> String {
         let cleaned: String = content.chars()
             .filter(|c| !c.is_whitespace())
             .collect();
 
-        base64::decode(&cleaned)
-            .ok()
-            .and_then(|bytes| String::from_utf8(bytes).ok())
-            .unwrap_or_else(|| content.to_string())
+        match base64::decode(&cleaned) {
+            Ok(bytes) => self.try_decode_with_charset(&bytes, charset),
+            Err(_) => content.to_string()
+        }
     }
 
-    /// 解码 Quoted-Printable 编码的内容（简化实现）
-    fn decode_quoted_printable(&self, content: &str) -> String {
-        let mut result = String::new();
+    /// 解码 Quoted-Printable 编码的内容（支持字符集）
+    fn decode_quoted_printable_with_charset(&self, content: &str, charset: &str) -> String {
+        let mut bytes: Vec<u8> = Vec::new();
         let mut chars = content.chars().peekable();
 
         while let Some(ch) = chars.next() {
             if ch == '=' {
                 if let Some(&next) = chars.peek() {
                     if next == '\n' || next == '\r' {
-                        // 软换行，跳过 = 和换行符
+                        // 软换行，跳过
                         chars.next();
                         if chars.peek() == Some(&'\n') {
                             chars.next();
@@ -975,23 +1034,25 @@ impl ImapService {
                         continue;
                     }
 
-                    // 尝试解码 hex
+                    // 解码 hex
                     let hex: String = chars.by_ref().take(2).collect();
                     if let Ok(byte) = u8::from_str_radix(&hex, 16) {
-                        result.push(byte as char);
+                        bytes.push(byte);
                     } else {
-                        result.push('=');
-                        result.push_str(&hex);
+                        bytes.push(b'=');
+                        for c in hex.chars() {
+                            bytes.push(c as u8);
+                        }
                     }
                 } else {
-                    result.push('=');
+                    bytes.push(b'=');
                 }
             } else {
-                result.push(ch);
+                bytes.push(ch as u8);
             }
         }
 
-        result
+        self.try_decode_with_charset(&bytes, charset)
     }
 
     /// 将 HTML 转换为纯文本（移除标签，保留内容）
@@ -1054,6 +1115,11 @@ impl ImapService {
     }
 
     pub async fn mark_as_read(&self, folder: &str, uid: u32) -> Result<(), String> {
+        // 163邮箱使用特殊处理
+        if is_163_email(&self.account) {
+            return self.mark_as_read_163(folder, uid).await;
+        }
+
         let mut client = self.connect().await?;
 
         client
@@ -1068,7 +1134,82 @@ impl ImapService {
         Ok(())
     }
 
+    /// 为163邮箱标记邮件已读
+    async fn mark_as_read_163(&self, folder: &str, uid: u32) -> Result<(), String> {
+        use native_tls::TlsConnector;
+        use std::io::{Read, Write};
+
+        // 建立TCP连接
+        let stream = TcpStream::connect((self.account.imap_server.as_str(), self.account.imap_port))
+            .map_err(|e| format!("TCP连接失败: {}", e))?;
+
+        // 创建TLS连接器
+        let tls = if cfg!(debug_assertions) {
+            TlsConnector::builder()
+                .danger_accept_invalid_certs(true)
+                .danger_accept_invalid_hostnames(true)
+                .build()
+        } else {
+            TlsConnector::builder().build()
+        }.map_err(|e| format!("TLS创建失败: {}", e))?;
+
+        // 升级到TLS
+        let mut tls_stream = tls.connect(&self.account.imap_server, stream)
+            .map_err(|e| format!("TLS连接失败: {}", e))?;
+
+        // 读取欢迎信息
+        let mut buffer = [0u8; 1024];
+        tls_stream.read(&mut buffer).map_err(|e| format!("读取欢迎信息失败: {}", e))?;
+
+        // 发送ID命令（163邮箱必需）
+        let id_cmd = b"A001 ID (\"name\" \"MailFlow\" \"version\" \"1.0\")\r\n";
+        tls_stream.write_all(id_cmd).map_err(|e| format!("发送ID命令失败: {}", e))?;
+        tls_stream.flush().map_err(|e| format!("刷新失败: {}", e))?;
+
+        buffer = [0u8; 1024];
+        tls_stream.read(&mut buffer).map_err(|e| format!("读取ID响应失败: {}", e))?;
+
+        // 发送LOGIN命令
+        let login_cmd = format!("A002 LOGIN \"{}\" \"{}\"\r\n", self.account.email, self.password);
+        tls_stream.write_all(login_cmd.as_bytes()).map_err(|e| format!("发送LOGIN命令失败: {}", e))?;
+        tls_stream.flush().map_err(|e| format!("刷新失败: {}", e))?;
+
+        let mut buffer2 = [0u8; 1024];
+        let n = tls_stream.read(&mut buffer2).map_err(|e| format!("读取LOGIN响应失败: {}", e))?;
+        let response = String::from_utf8_lossy(&buffer2[..n]);
+        if response.contains("NO") || response.contains("BAD") {
+            return Err(format!("163邮箱登录失败: {}", response));
+        }
+
+        // 选择文件夹
+        let select_cmd = format!("A003 SELECT \"{}\"\r\n", folder);
+        tls_stream.write_all(select_cmd.as_bytes()).map_err(|e| format!("发送SELECT命令失败: {}", e))?;
+        tls_stream.flush().map_err(|e| format!("刷新失败: {}", e))?;
+
+        let mut buffer3 = [0u8; 2048];
+        tls_stream.read(&mut buffer3).map_err(|e| format!("读取SELECT响应失败: {}", e))?;
+
+        // 标记已读
+        let store_cmd = format!("A004 UID STORE {} +FLAGS (\\Seen)\r\n", uid);
+        tls_stream.write_all(store_cmd.as_bytes()).map_err(|e| format!("发送STORE命令失败: {}", e))?;
+        tls_stream.flush().map_err(|e| format!("刷新失败: {}", e))?;
+
+        let mut buffer4 = [0u8; 1024];
+        tls_stream.read(&mut buffer4).map_err(|e| format!("读取STORE响应失败: {}", e))?;
+
+        // 发送LOGOUT
+        let _ = tls_stream.write_all(b"A005 LOGOUT\r\n");
+        let _ = tls_stream.flush();
+
+        Ok(())
+    }
+
     pub async fn delete_email(&self, folder: &str, uid: u32) -> Result<(), String> {
+        // 163邮箱使用特殊处理
+        if is_163_email(&self.account) {
+            return self.delete_email_163(folder, uid).await;
+        }
+
         let mut client = self.connect().await?;
 
         client
@@ -1085,7 +1226,90 @@ impl ImapService {
         Ok(())
     }
 
+    /// 为163邮箱删除邮件
+    async fn delete_email_163(&self, folder: &str, uid: u32) -> Result<(), String> {
+        use native_tls::TlsConnector;
+        use std::io::{Read, Write};
+
+        // 建立TCP连接
+        let stream = TcpStream::connect((self.account.imap_server.as_str(), self.account.imap_port))
+            .map_err(|e| format!("TCP连接失败: {}", e))?;
+
+        // 创建TLS连接器
+        let tls = if cfg!(debug_assertions) {
+            TlsConnector::builder()
+                .danger_accept_invalid_certs(true)
+                .danger_accept_invalid_hostnames(true)
+                .build()
+        } else {
+            TlsConnector::builder().build()
+        }.map_err(|e| format!("TLS创建失败: {}", e))?;
+
+        // 升级到TLS
+        let mut tls_stream = tls.connect(&self.account.imap_server, stream)
+            .map_err(|e| format!("TLS连接失败: {}", e))?;
+
+        // 读取欢迎信息
+        let mut buffer = [0u8; 1024];
+        tls_stream.read(&mut buffer).map_err(|e| format!("读取欢迎信息失败: {}", e))?;
+
+        // 发送ID命令
+        let id_cmd = b"A001 ID (\"name\" \"MailFlow\" \"version\" \"1.0\")\r\n";
+        tls_stream.write_all(id_cmd).map_err(|e| format!("发送ID命令失败: {}", e))?;
+        tls_stream.flush().map_err(|e| format!("刷新失败: {}", e))?;
+
+        buffer = [0u8; 1024];
+        tls_stream.read(&mut buffer).map_err(|e| format!("读取ID响应失败: {}", e))?;
+
+        // 发送LOGIN命令
+        let login_cmd = format!("A002 LOGIN \"{}\" \"{}\"\r\n", self.account.email, self.password);
+        tls_stream.write_all(login_cmd.as_bytes()).map_err(|e| format!("发送LOGIN命令失败: {}", e))?;
+        tls_stream.flush().map_err(|e| format!("刷新失败: {}", e))?;
+
+        let mut buffer2 = [0u8; 1024];
+        let n = tls_stream.read(&mut buffer2).map_err(|e| format!("读取LOGIN响应失败: {}", e))?;
+        let response = String::from_utf8_lossy(&buffer2[..n]);
+        if response.contains("NO") || response.contains("BAD") {
+            return Err(format!("163邮箱登录失败: {}", response));
+        }
+
+        // 选择文件夹
+        let select_cmd = format!("A003 SELECT \"{}\"\r\n", folder);
+        tls_stream.write_all(select_cmd.as_bytes()).map_err(|e| format!("发送SELECT命令失败: {}", e))?;
+        tls_stream.flush().map_err(|e| format!("刷新失败: {}", e))?;
+
+        let mut buffer3 = [0u8; 2048];
+        tls_stream.read(&mut buffer3).map_err(|e| format!("读取SELECT响应失败: {}", e))?;
+
+        // 标记删除
+        let store_cmd = format!("A004 UID STORE {} +FLAGS (\\Deleted)\r\n", uid);
+        tls_stream.write_all(store_cmd.as_bytes()).map_err(|e| format!("发送STORE命令失败: {}", e))?;
+        tls_stream.flush().map_err(|e| format!("刷新失败: {}", e))?;
+
+        let mut buffer4 = [0u8; 1024];
+        tls_stream.read(&mut buffer4).map_err(|e| format!("读取STORE响应失败: {}", e))?;
+
+        // EXPUNGE
+        let expunge_cmd = b"A005 EXPUNGE\r\n";
+        tls_stream.write_all(expunge_cmd).map_err(|e| format!("发送EXPUNGE命令失败: {}", e))?;
+        tls_stream.flush().map_err(|e| format!("刷新失败: {}", e))?;
+
+        let mut buffer5 = [0u8; 1024];
+        tls_stream.read(&mut buffer5).map_err(|e| format!("读取EXPUNGE响应失败: {}", e))?;
+
+        // 发送LOGOUT
+        let _ = tls_stream.write_all(b"A006 LOGOUT\r\n");
+        let _ = tls_stream.flush();
+
+        Ok(())
+    }
+
     pub async fn move_email(&self, folder: &str, uid: u32, dest_folder: &str) -> Result<(), String> {
+        // 163邮箱使用特殊处理
+        if is_163_email(&self.account) {
+            return self.move_email_163(folder, uid, dest_folder).await;
+        }
+
         let mut client = self.connect().await?;
 
         client
@@ -1103,6 +1327,92 @@ impl ImapService {
         client.expunge().map_err(|e| format!("清理失败: {}", e))?;
 
         client.logout().map_err(|e| format!("登出失败: {}", e))?;
+        Ok(())
+    }
+
+    /// 为163邮箱移动邮件
+    async fn move_email_163(&self, folder: &str, uid: u32, dest_folder: &str) -> Result<(), String> {
+        use native_tls::TlsConnector;
+        use std::io::{Read, Write};
+
+        // 建立TCP连接
+        let stream = TcpStream::connect((self.account.imap_server.as_str(), self.account.imap_port))
+            .map_err(|e| format!("TCP连接失败: {}", e))?;
+
+        // 创建TLS连接器
+        let tls = if cfg!(debug_assertions) {
+            TlsConnector::builder()
+                .danger_accept_invalid_certs(true)
+                .danger_accept_invalid_hostnames(true)
+                .build()
+        } else {
+            TlsConnector::builder().build()
+        }.map_err(|e| format!("TLS创建失败: {}", e))?;
+
+        // 升级到TLS
+        let mut tls_stream = tls.connect(&self.account.imap_server, stream)
+            .map_err(|e| format!("TLS连接失败: {}", e))?;
+
+        // 读取欢迎信息
+        let mut buffer = [0u8; 1024];
+        tls_stream.read(&mut buffer).map_err(|e| format!("读取欢迎信息失败: {}", e))?;
+
+        // 发送ID命令
+        let id_cmd = b"A001 ID (\"name\" \"MailFlow\" \"version\" \"1.0\")\r\n";
+        tls_stream.write_all(id_cmd).map_err(|e| format!("发送ID命令失败: {}", e))?;
+        tls_stream.flush().map_err(|e| format!("刷新失败: {}", e))?;
+
+        buffer = [0u8; 1024];
+        tls_stream.read(&mut buffer).map_err(|e| format!("读取ID响应失败: {}", e))?;
+
+        // 发送LOGIN命令
+        let login_cmd = format!("A002 LOGIN \"{}\" \"{}\"\r\n", self.account.email, self.password);
+        tls_stream.write_all(login_cmd.as_bytes()).map_err(|e| format!("发送LOGIN命令失败: {}", e))?;
+        tls_stream.flush().map_err(|e| format!("刷新失败: {}", e))?;
+
+        let mut buffer2 = [0u8; 1024];
+        let n = tls_stream.read(&mut buffer2).map_err(|e| format!("读取LOGIN响应失败: {}", e))?;
+        let response = String::from_utf8_lossy(&buffer2[..n]);
+        if response.contains("NO") || response.contains("BAD") {
+            return Err(format!("163邮箱登录失败: {}", response));
+        }
+
+        // 选择文件夹
+        let select_cmd = format!("A003 SELECT \"{}\"\r\n", folder);
+        tls_stream.write_all(select_cmd.as_bytes()).map_err(|e| format!("发送SELECT命令失败: {}", e))?;
+        tls_stream.flush().map_err(|e| format!("刷新失败: {}", e))?;
+
+        let mut buffer3 = [0u8; 2048];
+        tls_stream.read(&mut buffer3).map_err(|e| format!("读取SELECT响应失败: {}", e))?;
+
+        // 复制邮件
+        let copy_cmd = format!("A004 UID COPY {} \"{}\"\r\n", uid, dest_folder);
+        tls_stream.write_all(copy_cmd.as_bytes()).map_err(|e| format!("发送COPY命令失败: {}", e))?;
+        tls_stream.flush().map_err(|e| format!("刷新失败: {}", e))?;
+
+        let mut buffer4 = [0u8; 1024];
+        tls_stream.read(&mut buffer4).map_err(|e| format!("读取COPY响应失败: {}", e))?;
+
+        // 标记删除
+        let store_cmd = format!("A005 UID STORE {} +FLAGS (\\Deleted)\r\n", uid);
+        tls_stream.write_all(store_cmd.as_bytes()).map_err(|e| format!("发送STORE命令失败: {}", e))?;
+        tls_stream.flush().map_err(|e| format!("刷新失败: {}", e))?;
+
+        let mut buffer5 = [0u8; 1024];
+        tls_stream.read(&mut buffer5).map_err(|e| format!("读取STORE响应失败: {}", e))?;
+
+        // EXPUNGE
+        let expunge_cmd = b"A006 EXPUNGE\r\n";
+        tls_stream.write_all(expunge_cmd).map_err(|e| format!("发送EXPUNGE命令失败: {}", e))?;
+        tls_stream.flush().map_err(|e| format!("刷新失败: {}", e))?;
+
+        let mut buffer6 = [0u8; 1024];
+        tls_stream.read(&mut buffer6).map_err(|e| format!("读取EXPUNGE响应失败: {}", e))?;
+
+        // 发送LOGOUT
+        let _ = tls_stream.write_all(b"A007 LOGOUT\r\n");
+        let _ = tls_stream.flush();
+
         Ok(())
     }
 }
